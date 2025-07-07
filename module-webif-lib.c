@@ -41,7 +41,7 @@ static char *parse_auth_value(char *value)
 		}
 		while(value[0] == ' ' || value[0] == '"');
 		pch = value;
-		for(pch2 = value + strlen(value) - 1; pch2 >= value && (pch2[0] == ' ' || pch2[0] == '"' || pch2[0] == '\r' || pch2[0] == '\n'); --pch2) { pch2[0] = '\0'; }
+		for(pch2 = value + cs_strlen(value) - 1; pch2 >= value && (pch2[0] == ' ' || pch2[0] == '"' || pch2[0] == '\r' || pch2[0] == '\n'); --pch2) { pch2[0] = '\0'; }
 	}
 	return pch;
 }
@@ -68,7 +68,7 @@ time_t parse_modifiedsince(char *value)
 		if(month > 11) { month = -1; }
 		for(str = strtok_r(value, " ", &saveptr1); str; str = strtok_r(NULL, " ", &saveptr1))
 		{
-			switch(strlen(str))
+			switch(cs_strlen(str))
 			{
 			case 1:
 			case 2:
@@ -118,9 +118,9 @@ time_t parse_modifiedsince(char *value)
 void calculate_opaque(IN_ADDR_T addr, char *opaque)
 {
 	char noncetmp[128];
-	unsigned char md5tmp[MD5_DIGEST_LENGTH];
+	uint8_t md5tmp[MD5_DIGEST_LENGTH];
 	snprintf(noncetmp, sizeof(noncetmp), "%d:%s:%d", (int32_t)time(NULL), cs_inet_ntoa(addr), (int16_t)rand());
-	char_to_hex(MD5((unsigned char *)noncetmp, strlen(noncetmp), md5tmp), MD5_DIGEST_LENGTH, (unsigned char *)opaque);
+	char_to_hex(MD5((uint8_t *)noncetmp, cs_strlen(noncetmp), md5tmp), MD5_DIGEST_LENGTH, (uint8_t *)opaque);
 }
 
 void init_noncelocks(void)
@@ -182,11 +182,11 @@ void calculate_nonce(char *nonce, char *result, char *opaque)
 	if(!foundnonce && !foundopaque)
 	{
 		char noncetmp[128], randstr[16];
-		unsigned char md5tmp[MD5_DIGEST_LENGTH];
+		uint8_t md5tmp[MD5_DIGEST_LENGTH];
 		get_random_bytes((uint8_t *)randstr, sizeof(randstr) - 1);
 		randstr[sizeof(randstr) - 1] = '\0';
 		snprintf(noncetmp, sizeof(noncetmp), "%d:%s:%s", (int32_t)now, randstr, noncekey);
-		char_to_hex(MD5((unsigned char *)noncetmp, strlen(noncetmp), md5tmp), MD5_DIGEST_LENGTH, (unsigned char *)result);
+		char_to_hex(MD5((uint8_t *)noncetmp, cs_strlen(noncetmp), md5tmp), MD5_DIGEST_LENGTH, (uint8_t *)result);
 		if(cs_malloc(&noncelist, sizeof(struct s_nonce)))
 		{
 			noncelist->expirationdate = now + AUTHNONCEEXPIRATION;
@@ -258,35 +258,35 @@ int32_t check_auth(char *authstring, char *method, char *path, IN_ADDR_T addr, c
 		}
 	}
 
-	if(strncmp(uri, path, strlen(path)) == 0) { uriok = 1; }
+	if(strncmp(uri, path, cs_strlen(path)) == 0) { uriok = 1; }
 	else
 	{
 		pch2 = uri;
 		for(pch = uri; pch[0] != '\0'; ++pch)
 		{
 			if(pch[0] == '/') { pch2 = pch; }
-			if(strncmp(pch2, path, strlen(path)) == 0) { uriok = 1; }
+			if(strncmp(pch2, path, cs_strlen(path)) == 0) { uriok = 1; }
 		}
 	}
 	if(uriok == 1 && streq(username, cfg.http_user))
 	{
-		char A1tmp[3 + strlen(username) + strlen(AUTHREALM) + strlen(expectedPassword)];
+		char A1tmp[3 + cs_strlen(username) + cs_strlen(AUTHREALM) + cs_strlen(expectedPassword)];
 		char A1[(MD5_DIGEST_LENGTH * 2) + 1], A2[(MD5_DIGEST_LENGTH * 2) + 1], A3[(MD5_DIGEST_LENGTH * 2) + 1];
-		unsigned char md5tmp[MD5_DIGEST_LENGTH];
+		uint8_t md5tmp[MD5_DIGEST_LENGTH];
 		snprintf(A1tmp, sizeof(A1tmp), "%s:%s:%s", username, AUTHREALM, expectedPassword);
-		char_to_hex(MD5((unsigned char *)A1tmp, strlen(A1tmp), md5tmp), MD5_DIGEST_LENGTH, (unsigned char *)A1);
+		char_to_hex(MD5((uint8_t *)A1tmp, cs_strlen(A1tmp), md5tmp), MD5_DIGEST_LENGTH, (uint8_t *)A1);
 
-		char A2tmp[2 + strlen(method) + strlen(uri)];
+		char A2tmp[2 + cs_strlen(method) + cs_strlen(uri)];
 		snprintf(A2tmp, sizeof(A2tmp), "%s:%s", method, uri);
-		char_to_hex(MD5((unsigned char *)A2tmp, strlen(A2tmp), md5tmp), MD5_DIGEST_LENGTH, (unsigned char *)A2);
+		char_to_hex(MD5((uint8_t *)A2tmp, cs_strlen(A2tmp), md5tmp), MD5_DIGEST_LENGTH, (uint8_t *)A2);
 
-		char A3tmp[10 + strlen(A1) + strlen(A2) + strlen(authnonce) + strlen(authnc) + strlen(authcnonce)];
+		char A3tmp[10 + cs_strlen(A1) + cs_strlen(A2) + cs_strlen(authnonce) + cs_strlen(authnc) + cs_strlen(authcnonce)];
 		snprintf(A3tmp, sizeof(A3tmp), "%s:%s:%s:%s:auth:%s", A1, authnonce, authnc, authcnonce, A2);
-		char_to_hex(MD5((unsigned char *)A3tmp, strlen(A3tmp), md5tmp), MD5_DIGEST_LENGTH, (unsigned char *)A3);
+		char_to_hex(MD5((uint8_t *)A3tmp, cs_strlen(A3tmp), md5tmp), MD5_DIGEST_LENGTH, (uint8_t *)A3);
 
 		if(strcmp(A3, authresponse) == 0)
 		{
-			if(strlen(opaque) != MD5_DIGEST_LENGTH * 2) { calculate_opaque(addr, opaque); }
+			if(cs_strlen(opaque) != MD5_DIGEST_LENGTH * 2) { calculate_opaque(addr, opaque); }
 			calculate_nonce(authnonce, expectednonce, opaque);
 			if(strcmp(expectednonce, authnonce) == 0) { authok = 1; }
 			else
@@ -316,7 +316,7 @@ int32_t webif_write_raw(char *buf, FILE *f, int32_t len)
 
 int32_t webif_write(char *buf, FILE *f)
 {
-	return webif_write_raw(buf, f, strlen(buf));
+	return webif_write_raw(buf, f, cs_strlen(buf));
 }
 
 int32_t webif_read(char *buf, int32_t num, FILE *f)
@@ -336,7 +336,7 @@ void send_headers(FILE *f, int32_t status, char *title, char *extra, char *mime,
 {
 	time_t now;
 	char timebuf[32];
-	char buf[sizeof(PROTOCOL) + sizeof(SERVER) + strlen(title) + (extra == NULL ? 0 : strlen(extra) + 2) + (mime == NULL ? 0 : strlen(mime) + 2) + 350];
+	char buf[sizeof(PROTOCOL) + sizeof(SERVER) + cs_strlen(title) + (extra == NULL ? 0 : cs_strlen(extra) + 2) + (mime == NULL ? 0 : cs_strlen(mime) + 2) + 350];
 	char *pos = buf;
 	struct tm timeinfo;
 
@@ -369,7 +369,7 @@ void send_headers(FILE *f, int32_t status, char *title, char *extra, char *mime,
 		pos += snprintf(pos, sizeof(buf) - (pos - buf), "Last-Modified: %s\r\n", timebuf);
 		if(content)
 		{
-			uint32_t checksum = (uint32_t)crc32(0L, (uchar *)content, length);
+			uint32_t checksum = (uint32_t)crc32(0L, (uint8_t *)content, length);
 			pos += snprintf(pos, sizeof(buf) - (pos - buf), "ETag: \"%u\"\r\n", checksum == 0 ? 1 : checksum);
 		}
 	}
@@ -378,20 +378,20 @@ void send_headers(FILE *f, int32_t status, char *title, char *extra, char *mime,
 	else
 		{ pos += snprintf(pos, sizeof(buf) - (pos - buf), "Connection: close\r\n"); }
 	snprintf(pos, sizeof(buf) - (pos - buf), "\r\n");
-	if(forcePlain == 1) { fwrite(buf, 1, strlen(buf), f); }
+	if(forcePlain == 1) { fwrite(buf, 1, cs_strlen(buf), f); }
 	else { webif_write(buf, f); }
 }
 
 void send_error(FILE *f, int32_t status, char *title, char *extra, char *text, int8_t forcePlain)
 {
-	char buf[(2 * strlen(title)) + strlen(text) + 128];
+	char buf[(2 * cs_strlen(title)) + cs_strlen(text) + 128];
 	char *pos = buf;
 	pos += snprintf(pos, sizeof(buf) - (pos - buf), "<HTML><HEAD><TITLE>%d %s</TITLE></HEAD>\r\n", status, title);
 	pos += snprintf(pos, sizeof(buf) - (pos - buf), "<BODY><H4>%d %s</H4>\r\n", status, title);
 	pos += snprintf(pos, sizeof(buf) - (pos - buf), "%s\r\n", text);
 	snprintf(pos, sizeof(buf) - (pos - buf), "</BODY></HTML>\r\n");
-	send_headers(f, status, title, extra, "text/html", 0, strlen(buf), NULL, forcePlain);
-	if(forcePlain == 1) { fwrite(buf, 1, strlen(buf), f); }
+	send_headers(f, status, title, extra, "text/html", 0, cs_strlen(buf), NULL, forcePlain);
+	if(forcePlain == 1) { fwrite(buf, 1, cs_strlen(buf), f); }
 	else { webif_write(buf, f); }
 }
 
@@ -412,19 +412,19 @@ void send_file(FILE *f, char *filename, char *subdir, time_t modifiedheader, uin
 {
 	int8_t filen = 0;
 	int32_t size = 0;
-	char *mimetype = "", *result = " ", *allocated = NULL;
+	char *mimetype = "";
+	char *result = " ";
+	char *allocated = NULL;
 	time_t moddate;
 	char path[255];
 	char *CSS = NULL;
 	char *JSCRIPT = NULL;
 	char *JQUERY = NULL;
-	char *TOUCH_CSS = NULL;
-	char *TOUCH_JSCRIPT = NULL;
 
 	if(!strcmp(filename, "CSS"))
 	{
 		filename = cfg.http_css ? cfg.http_css : "";
-		if(subdir && strlen(subdir) > 0)
+		if(subdir && cs_strlen(subdir) > 0)
 		{
 			filename = tpl_getFilePathInSubdir(cfg.http_tpl ? cfg.http_tpl : "", subdir, "site", ".css", path, 255);
 		}
@@ -434,7 +434,7 @@ void send_file(FILE *f, char *filename, char *subdir, time_t modifiedheader, uin
 	else if(!strcmp(filename, "JS"))
 	{
 		filename = cfg.http_jscript ? cfg.http_jscript : "";
-		if(subdir && strlen(subdir) > 0)
+		if(subdir && cs_strlen(subdir) > 0)
 		{
 			filename = tpl_getFilePathInSubdir(cfg.http_tpl ? cfg.http_tpl : "", subdir, "oscam", ".js", path, 255);
 		}
@@ -443,7 +443,7 @@ void send_file(FILE *f, char *filename, char *subdir, time_t modifiedheader, uin
 	}
 	else if(!strcmp(filename, "JQ"))
 	{
-		if(subdir && strlen(subdir) > 0)
+		if(subdir && cs_strlen(subdir) > 0)
 		{
 			filename = tpl_getFilePathInSubdir(cfg.http_tpl ? cfg.http_tpl : "", subdir, "jquery", ".js", path, 255);
 		}
@@ -451,83 +451,74 @@ void send_file(FILE *f, char *filename, char *subdir, time_t modifiedheader, uin
 		filen = 3;
 	}
 
-	if(strlen(filename) > 0 && file_exists(filename))
+	if(cs_strlen(filename) > 0 && file_exists(filename))
 	{
 		struct stat st;
+		FILE *fp = NULL;
+		int32_t readen = 0;
+		uint32_t CSS_sz = 0;
+		char separator[255];
+
 		stat(filename, &st);
 		moddate = st.st_mtime;
+		memset(separator, 0, sizeof(separator));
+
+		if(filen == 1 && cfg.http_prepend_embedded_css)    // Prepend Embedded CSS
+		{
+			CSS = tpl_getUnparsedTpl("CSS", 1, "");
+			snprintf(separator, sizeof(separator), "\n/* Begin embedded CSS File: %s */\n", cfg.http_css);
+		}
+
 		// We need at least size 1 or keepalive gets problems on some browsers...
 		if(st.st_size > 0)
 		{
-			FILE *fp;
-			int32_t readen;
-			if((fp = fopen(filename, "r")) == NULL) { return; }
-			if(!cs_malloc(&allocated, st.st_size + 1))
+			if((fp = fopen(filename, "r")) == NULL)
+				return;
+
+			if (CSS)
+				CSS_sz += cs_strlen(CSS);
+
+			if(!cs_malloc(&allocated, st.st_size + CSS_sz + cs_strlen(separator) + 1))
 			{
 				send_error500(f);
 				fclose(fp);
 				return;
 			}
-			if((readen = fread(allocated, 1, st.st_size, fp)) == st.st_size)
+
+			if((readen = fread(allocated + CSS_sz + cs_strlen(separator), 1, st.st_size, fp)) == st.st_size)
 			{
-				allocated[readen] = '\0';
+				allocated[readen + CSS_sz + cs_strlen(separator)] = '\0';
 			}
+
 			fclose(fp);
 		}
 
 		if(filen == 1 && cfg.http_prepend_embedded_css)    // Prepend Embedded CSS
 		{
-			char separator [255];
-			snprintf(separator, 255, "\n/* Beginn embedded CSS File: %s */\n", cfg.http_css);
-			char *oldallocated = allocated;
-			CSS = tpl_getUnparsedTpl("CSS", 1, "");
-			int32_t newsize = strlen(CSS) + strlen(separator) + 2;
-			if(oldallocated) { newsize += strlen(oldallocated) + 1; }
-			if(!cs_malloc(&allocated, newsize))
+			if (CSS && allocated)
 			{
-				if(oldallocated) { NULLFREE(oldallocated); }
-				NULLFREE(CSS);
-				send_error500(f);
-				return;
+				memcpy(allocated, CSS, CSS_sz);
+				memcpy(allocated + CSS_sz, separator, cs_strlen(separator));
+				allocated[readen + CSS_sz + cs_strlen(separator)] = '\0';
 			}
-			if (CSS){
-				snprintf(allocated, newsize, "%s\n%s\n%s", CSS, separator, (oldallocated != NULL ? oldallocated : ""));
-			}
-			if(oldallocated) { NULLFREE(oldallocated); }
 		}
 
 		if(allocated) { result = allocated; }
-
 	}
 	else
 	{
 		CSS = tpl_getUnparsedTpl("CSS", 1, "");
 		JSCRIPT = tpl_getUnparsedTpl("JSCRIPT", 1, "");
 		JQUERY = tpl_getUnparsedTpl("JQUERY", 1, "");
-#ifdef TOUCH
-		TOUCH_CSS = tpl_getUnparsedTpl("TOUCH_CSS", 1, "");
-		TOUCH_JSCRIPT = tpl_getUnparsedTpl("TOUCH_JSCRIPT", 1, "");
-
-		if(!subdir || strcmp(subdir, TOUCH_SUBDIR)) {
-			if( filen == 1 && strlen(CSS)){ result = CSS; }
-			else if ( filen == 2 && strlen(JSCRIPT)){ result = JSCRIPT; }
-			else if ( filen == 3 && strlen(JQUERY)){ result = JQUERY; }
-		} else {
-			if( filen == 1 && strlen(TOUCH_CSS)){ result = TOUCH_CSS; }
-			else if ( filen == 2 && strlen(TOUCH_JSCRIPT)){ result = TOUCH_JSCRIPT; }
-			else if ( filen == 3 && strlen(JQUERY)){ result = JQUERY; }
-		}
-#else
-		if(filen == 1 && strlen(CSS) > 0){ result = CSS;}
-		else if(filen == 2 && strlen(JSCRIPT) > 0){result = JSCRIPT;}
-		else if(filen == 3 && strlen(JQUERY) > 0){result = JQUERY;}
-#endif
+		if(filen == 1 && cs_strlen(CSS) > 0){ result = CSS;}
+		else if(filen == 2 && cs_strlen(JSCRIPT) > 0){result = JSCRIPT;}
+		else if(filen == 3 && cs_strlen(JQUERY) > 0){result = JQUERY;}
 		moddate = first_client->login;
 	}
 
-	size = strlen(result);
+	size = cs_strlen(result);
 
-	if((etagheader == 0 && moddate < modifiedheader) || (etagheader > 0 && (uint32_t)crc32(0L, (uchar *)result, size) == etagheader))
+	if((etagheader == 0 && moddate < modifiedheader) || (etagheader > 0 && (uint32_t)crc32(0L, (uint8_t *)result, size) == etagheader))
 	{
 		send_header304(f, extraheader);
 	}
@@ -540,8 +531,6 @@ void send_file(FILE *f, char *filename, char *subdir, time_t modifiedheader, uin
 	NULLFREE(CSS);
 	NULLFREE(JSCRIPT);
 	NULLFREE(JQUERY);
-	NULLFREE(TOUCH_CSS);
-	NULLFREE(TOUCH_JSCRIPT);
 }
 
 /* Parse url parameters and save them to params array. The pch pointer is increased to the position where parsing stopped. */
@@ -631,10 +620,15 @@ int8_t get_stats_linux(const pid_t pid, struct pstat* result)
 	// convert pid to string
 	char pid_s[20];
 	snprintf(pid_s, sizeof(pid_s), "%d", pid);
-	char stat_filepath[30] = "/proc/"; strncat(stat_filepath, pid_s,
-			sizeof(stat_filepath) - strlen(stat_filepath) -1);
-	strncat(stat_filepath, "/stat", sizeof(stat_filepath) -
-			strlen(stat_filepath) -1);
+	char stat_filepath[30] = "/proc/";
+
+	if (!cs_strncat(stat_filepath, pid_s, sizeof(stat_filepath))) {
+		return -1;
+	}
+
+	if (!cs_strncat(stat_filepath, "/stat", sizeof(stat_filepath))) {
+		return -1;
+	}
 
 	FILE *f_pstat = fopen(stat_filepath, "r");
 	if (f_pstat == NULL) {
@@ -697,16 +691,15 @@ int8_t get_stats_linux(const pid_t pid, struct pstat* result)
 
 	// read processes from /proc
 	uint info_procs = 0;
-	DIR *hdir;
-	if((hdir = opendir("/proc")) != NULL){
-		struct dirent entry;
-		struct dirent *dirresult;
-		while(cs_readdir_r(hdir, &entry, &dirresult) == 0 && dirresult != NULL)
-		{
-			if (entry.d_name[0] > '0' && entry.d_name[0] <= '9') { info_procs++; }
-		}
-		closedir(hdir);
+	struct dirent **entries;
+	int n = scandir("/proc", &entries, NULL, NULL);
+	n = MAX(n, 0);
+	while(n--)
+	{
+		if (entries[n]->d_name[0] > '0' && entries[n]->d_name[0] <= '9') { info_procs++; }
+		free(entries[n]);
 	}
+	free(entries);
 
 	// read cpu/meminfo from sysinfo()
 	struct sysinfo info;
@@ -784,12 +777,12 @@ struct CRYPTO_dynlock_value
 };
 
 /* function really needs unsigned long to prevent compiler warnings... */
-static unsigned long SSL_id_function(void)
+unsigned long SSL_id_function(void)
 {
 	return ((unsigned long) pthread_self());
 }
 
-static void SSL_locking_function(int32_t mode, int32_t type, const char *file, int32_t line)
+void SSL_locking_function(int32_t mode, int32_t type, const char *file, int32_t line)
 {
 	if(mode & CRYPTO_LOCK)
 	{
@@ -803,7 +796,7 @@ static void SSL_locking_function(int32_t mode, int32_t type, const char *file, i
 	if(file || line) { return; }
 }
 
-static struct CRYPTO_dynlock_value *SSL_dyn_create_function(const char *file, int32_t line)
+struct CRYPTO_dynlock_value *SSL_dyn_create_function(const char *file, int32_t line)
 {
 	struct CRYPTO_dynlock_value *l;
 	if(!cs_malloc(&l, sizeof(struct CRYPTO_dynlock_value)))
@@ -821,7 +814,7 @@ static struct CRYPTO_dynlock_value *SSL_dyn_create_function(const char *file, in
 	return l;
 }
 
-static void SSL_dyn_lock_function(int32_t mode, struct CRYPTO_dynlock_value *l, const char *file, int32_t line)
+void SSL_dyn_lock_function(int32_t mode, struct CRYPTO_dynlock_value *l, const char *file, int32_t line)
 {
 	if(mode & CRYPTO_LOCK)
 	{
@@ -835,13 +828,223 @@ static void SSL_dyn_lock_function(int32_t mode, struct CRYPTO_dynlock_value *l, 
 	if(file || line) { return; }
 }
 
-static void SSL_dyn_destroy_function(struct CRYPTO_dynlock_value *l, const char *file, int32_t line)
+void SSL_dyn_destroy_function(struct CRYPTO_dynlock_value *l, const char *file, int32_t line)
 {
 	pthread_mutex_destroy(&l->mutex);
 	NULLFREE(l);
 	// just to remove compiler warnings...
 	if(file || line) { return; }
 }
+
+#if defined(OPENSSL_NO_EC)
+#pragma message "WARNING: OpenSSL was built without support for elliptic curve cryptography (no-ec). Webserver certificate generation at runtime will not work!"
+static bool create_certificate(const char *path)
+{
+	cs_log("generating webserver ssl certificate file %s (%s)", path, "SKIPPED");
+	return false;
+}
+#else
+/* add X.509 V3 extensions */
+static bool add_ext(X509 *cert, int nid, char *value)
+{
+	X509_EXTENSION *ex;
+	X509V3_CTX ctx;
+
+	X509V3_set_ctx_nodb(&ctx);
+	X509V3_set_ctx(&ctx, cert, cert, NULL, NULL, 0);
+	ex = X509V3_EXT_conf_nid(NULL, &ctx, nid, value);
+	if (!ex)
+		return false;
+
+	X509_add_ext(cert, ex, -1);
+	X509_EXTENSION_free(ex);
+	return true;
+}
+
+/* Create a self-signed certificate for basic https webif usage */
+static bool create_certificate(const char *path)
+{
+	X509 *pcert = NULL;
+	X509_NAME * subject_name;
+	X509_NAME * issuer_name;
+	EVP_PKEY *pkey = NULL;
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+	RSA * rsa_key = NULL;
+#elif OPENSSL_VERSION_NUMBER < 0x30000000L
+	EC_KEY *ec_key = NULL;
+#endif
+	ASN1_INTEGER *asn1_serial_number;
+	BIGNUM *serial_number = NULL;
+	char san[256];
+	struct utsname buffer;
+	bool ret = false;
+
+	const char *cn = !uname(&buffer) ? buffer.nodename : "localhost";
+	size_t cn_len = MIN(strlen(cn), 63);
+
+	cs_log("generating webserver ssl certificate file %s (%s)", path,
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+	"RSA"
+#else
+	"ECDSA"
+#endif
+	);
+	if ((pkey = EVP_PKEY_new()))
+	{
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+		if (!(rsa_key = RSA_generate_key(4096, RSA_F4, NULL, NULL)))
+		{
+			goto err;
+		}
+		if (!EVP_PKEY_assign_RSA(pkey, rsa_key))
+		{
+			goto err;
+		}
+		rsa_key = NULL;
+#elif OPENSSL_VERSION_NUMBER < 0x30000000L
+		if (!(ec_key = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1))) //prime256v1
+		{
+			goto err;
+		}
+		if (!EC_KEY_generate_key(ec_key))
+		{
+			goto err;
+		}
+		if (!EVP_PKEY_assign_EC_KEY(pkey, ec_key))
+		{
+			goto err;
+		}
+		ec_key = NULL;
+#else
+		pkey = EVP_EC_gen(SN_X9_62_prime256v1); //prime256v1
+#endif
+		if ((pcert = X509_new()))
+		{
+			X509_set_pubkey(pcert, pkey);
+			// serialNumber
+			if (!X509_set_version(pcert, 2L))
+			{
+				goto err;
+			}
+
+			// serialNumber
+			if ((serial_number = BN_new()))
+			{
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+				if (!BN_pseudo_rand(serial_number, 64, 0, 0))
+				{
+					goto err;
+				}
+#else
+				if (!BN_rand(serial_number, 64, 0, 0))
+				{
+					goto err;
+				}
+#endif
+				asn1_serial_number = X509_get_serialNumber(pcert);
+				if (!asn1_serial_number)
+				{
+					goto err;
+				}
+				if (!BN_to_ASN1_INTEGER(serial_number, asn1_serial_number))
+				{
+					goto err;
+				}
+
+				// subject + issuer
+				if ((subject_name = X509_NAME_new()) && (issuer_name = X509_NAME_new()))
+				{
+					if (!X509_NAME_add_entry_by_NID(subject_name, NID_commonName, MBSTRING_UTF8, (unsigned char *) cn, cn_len, -1, 0))
+					{
+						goto err;
+					}
+					if (!X509_set_subject_name(pcert, subject_name))
+					{
+						goto err;
+					}
+
+					if (!X509_NAME_add_entry_by_NID(issuer_name, NID_commonName, MBSTRING_UTF8, (unsigned char *) cn, cn_len, -1, 0))
+					{
+						goto err;
+					}
+					if (!X509_set_issuer_name(pcert, issuer_name))
+					{
+						goto err;
+					}
+
+					// expiration
+					X509_gmtime_adj(X509_getm_notBefore(pcert), 0);
+					X509_gmtime_adj(X509_getm_notAfter(pcert), CERT_EXPIRY_TIME);
+
+					// X.509 V3 extensions
+					add_ext(pcert, NID_basic_constraints, "CA:FALSE" );
+					add_ext(pcert, NID_key_usage, "nonRepudiation, digitalSignature, keyEncipherment" );
+					add_ext(pcert, NID_ext_key_usage, "clientAuth, serverAuth" );
+					snprintf(san, sizeof(san), "DNS:%s, DNS:%s.local, IP:127.0.0.1, IP:::1", cn, cn);
+					add_ext(pcert, NID_subject_alt_name, san);
+
+					// sign certificate with private key
+					X509_sign(pcert, pkey, EVP_sha256());
+
+					// write private key and certificate to file
+					FILE * pemfile;
+					if ((pemfile = fopen(path, "w")))
+					{
+						PEM_write_PrivateKey(pemfile, pkey, NULL, NULL, 0, NULL, NULL);
+						PEM_write_X509(pemfile, pcert);
+						fclose(pemfile);
+						ret = true;
+					}
+					else
+					{
+						cs_log("can't write to file %s", path);
+						goto err;
+					}
+				}
+				else
+				{
+					cs_log("Error: X509_NAME_new() failed");
+				}
+			}
+			else
+			{
+				cs_log("Error: BN_new() failed");
+			}
+		}
+		else
+		{
+			cs_log("Error: X509_new() failed");
+		}
+	}
+	else
+	{
+		cs_log("Error: EVP_PKEY_new() failed");
+	}
+
+err:
+	ERR_print_errors_fp(stderr);
+	if (pkey)
+	{
+		EVP_PKEY_free(pkey);
+	}
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L && OPENSSL_VERSION_NUMBER < 0x30000000L
+	if (ec_key)
+	{
+		EC_KEY_free(ec_key);
+	}
+#endif
+	if (pcert)
+	{
+		X509_free(pcert);
+	}
+	if (serial_number)
+	{
+		BN_free(serial_number);
+	}
+
+	return ret;
+}
+#endif
 
 /* Init necessary structures for SSL in WebIf*/
 SSL_CTX *SSL_Webif_Init(void)
@@ -869,7 +1072,7 @@ SSL_CTX *SSL_Webif_Init(void)
 	ctx = SSL_CTX_new(SSLv23_server_method());
 
 #if defined(SSL_CTX_set_ecdh_auto)
-		SSL_CTX_set_ecdh_auto(ctx, 1);
+		(void) SSL_CTX_set_ecdh_auto(ctx, 1);
 #elif defined(EC_PKEY_NO_PARAMETERS) && defined(NID_X9_62_prime256v1)
 		EC_KEY *ecdh = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
 		if(ecdh)
@@ -881,14 +1084,16 @@ SSL_CTX *SSL_Webif_Init(void)
 
 	if(cfg.https_force_secure_mode)
 	{
-#ifdef SSL_CTX_clear_options
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L || defined SSL_CTX_clear_options // makro removed in OpenSSL 1.1.0+
 		SSL_CTX_clear_options(ctx, SSL_OP_ALL); //we CLEAR all bug workarounds! This is for security reason
 #else
 		cs_log("WARNING: You enabled to force secure HTTPS but your system does not support to clear the ssl workarounds! SSL security will be reduced!");
 #endif
 	}
 
-#ifdef SSL_OP_NO_TLSv1_1
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+	SSL_CTX_set_min_proto_version(ctx, SSL3_VERSION);
+#elif defined SSL_OP_NO_TLSv1_1
 	SSL_CTX_set_options(ctx, SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_TLSv1);
 #else
 	SSL_CTX_set_options(ctx, SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3);
@@ -901,10 +1106,18 @@ SSL_CTX *SSL_Webif_Init(void)
 	else
 		{ cs_strncpy(path, cfg.http_cert, sizeof(path)); }
 
+	if(!file_exists(path) && cfg.https_auto_create_cert) //generate a ready-to-use SSL certificate if no certificate file is available
+	{
+		if(!create_certificate(path))
+		{
+			goto out_err;
+		}
+	}
+
 	if(!ctx)
 		goto out_err;
 
-	if(SSL_CTX_use_certificate_file(ctx, path, SSL_FILETYPE_PEM) <= 0)
+	if(SSL_CTX_use_certificate_chain_file(ctx, path) <=0)
 		goto out_err;
 
 	if(SSL_CTX_use_PrivateKey_file(ctx, path, SSL_FILETYPE_PEM) <= 0)
@@ -916,7 +1129,7 @@ SSL_CTX *SSL_Webif_Init(void)
 		goto out_err;
 	}
 
-	cs_log("load ssl certificate file %s", path);
+	cs_log("loading ssl certificate file %s", path);
 	return ctx;
 
 out_err:

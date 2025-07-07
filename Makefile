@@ -4,8 +4,9 @@ SHELL = /bin/sh
 .SUFFIXES: .o .c
 .PHONY: all tests help README.build README.config simple default debug config menuconfig allyesconfig allnoconfig defconfig clean distclean
 
-VER     := $(shell ./config.sh --oscam-version)
-SVN_REV := $(shell ./config.sh --oscam-revision)
+VER        := $(shell ./config.sh --oscam-version)
+GIT_SHA    := $(shell ./config.sh --oscam-commit)
+BUILD_DATE := $(shell date +"%d.%m.%Y %T")
 
 uname_S := $(shell sh -c 'uname -s 2>/dev/null || echo not')
 
@@ -18,13 +19,13 @@ LINKER_VER_OPT:=-Wl,--version
 
 # Find OSX SDK
 ifeq ($(uname_S),Darwin)
-# Setting OSX_VER allows you to choose prefered version if you have
-# two SDKs installed. For example if you have 10.6 and 10.5 installed
-# you can choose 10.5 by using 'make USE_PCSC=1 OSX_VER=10.5'
-# './config.sh --detect-osx-sdk-version' returns the newest SDK if
-# SDK_VER is not set.
-OSX_SDK := $(shell ./config.sh --detect-osx-sdk-version $(OSX_VER))
-LINKER_VER_OPT:=-Wl,-v
+	# Setting OSX_VER allows you to choose prefered version if you have
+	# two SDKs installed. For example if you have 10.6 and 10.5 installed
+	# you can choose 10.5 by using 'make USE_PCSC=1 OSX_VER=10.5'
+	# './config.sh --detect-osx-sdk-version' returns the newest SDK if
+	# SDK_VER is not set.
+	OSX_SDK := $(shell ./config.sh --detect-osx-sdk-version $(OSX_VER))
+	LINKER_VER_OPT:=-Wl,-v
 endif
 
 ifeq "$(shell ./config.sh --enabled WITH_SSL)" "Y"
@@ -42,28 +43,119 @@ LIB_DL = -ldl
 
 LIB_RT :=
 ifeq ($(uname_S),Linux)
-ifeq "$(shell ./config.sh --enabled CLOCKFIX)" "Y"
-	LIB_RT := -lrt
-endif
+	ifeq "$(shell ./config.sh --enabled CLOCKFIX)" "Y"
+		LIB_RT := -lrt
+	endif
 endif
 ifeq ($(uname_S),FreeBSD)
-LIB_DL :=
+	LIB_DL :=
 endif
 
-override STD_LIBS := $(LIB_PTHREAD) $(LIB_DL) $(LIB_RT)
-override STD_DEFS := -D'CS_SVN_VERSION="$(SVN_REV)"'
+ifeq "$(shell ./config.sh --enabled MODULE_STREAMRELAY)" "Y"
+	override USE_LIBDVBCSA=1
+	ifeq "$(notdir ${LIBDVBCSA_LIB})" "libdvbcsa.a"
+		override CFLAGS += -DSTATIC_LIBDVBCSA=1
+	else
+		override CFLAGS += -DSTATIC_LIBDVBCSA=0
+	endif
+endif
+
+override STD_LIBS := -lm $(LIB_PTHREAD) $(LIB_DL) $(LIB_RT)
+override STD_DEFS := -D'CS_VERSION="$(VER)"'
+override STD_DEFS += -D'CS_GIT_COMMIT="$(GIT_SHA)"'
+override STD_DEFS += -D'CS_BUILD_DATE="$(BUILD_DATE)"'
 override STD_DEFS += -D'CS_CONFDIR="$(CONF_DIR)"'
-
-# Compiler warnings
-CC_WARN = -W -Wall -Wshadow -Wredundant-decls -Wstrict-prototypes -Wold-style-definition -Wno-unused-result
-
-# Compiler optimizations
-CC_OPTS = -O2 -ggdb -pipe -ffunction-sections -fdata-sections
 
 CC = $(CROSS_DIR)$(CROSS)gcc
 STRIP = $(CROSS_DIR)$(CROSS)strip
+UPX = $(shell which upx 2>/dev/null || true)
+SSL = $(shell which openssl 2>/dev/null || true)
+STAT = $(shell which gnustat 2>/dev/null || which stat 2>/dev/null)
+SPLIT = $(shell which gsplit 2>/dev/null || which split 2>/dev/null)
+GREP = $(shell which ggrep 2>/dev/null || which grep 2>/dev/null)
+
+# Compiler warnings
+CC_WARN = -W -Wall -Wshadow -Wredundant-decls -Wstrict-prototypes -Wold-style-definition
+
+# Compiler optimizations
+CCVERSION := $(shell $(CC) --version 2>/dev/null | head -n 1)
+ifneq (,$(findstring clang,$(CCVERSION)))
+	CC_OPTS = -O2 -ggdb -pipe -ffunction-sections -fdata-sections -fomit-frame-pointer
+else
+	CC_OPTS = -O2 -ggdb -pipe -ffunction-sections -fdata-sections -fomit-frame-pointer -fno-schedule-insns
+endif
 
 LDFLAGS = -Wl,--gc-sections
+
+# Enable sse2 on x86, neon on arm
+TARGETHELP := $(shell $(CC) --target-help 2>&1)
+ifneq (,$(findstring sse2,$(TARGETHELP)))
+override CFLAGS += -mmmx -msse -msse2 -msse3
+else ifneq (,$(findstring neon,$(TARGETHELP)))
+	ifeq "$(shell ./config.sh --enabled WITH_ARM_NEON)" "Y"
+		override CFLAGS += -mfpu=neon
+	endif
+endif
+
+# Enable upx compression
+UPX_VER = $(shell ($(UPX) --version 2>/dev/null || echo "n.a.") | head -n 1)
+COMP_LEVEL = --best
+ifdef USE_COMPRESS
+	ifeq ($(UPX_VER),n.a.)
+		override USE_COMPRESS =
+		UPX_COMMAND_OSCAM = $(SAY) "UPX	Disabled due to missing upx binary in PATH!";
+	else
+		override STD_DEFS += -D'USE_COMPRESS="$(USE_COMPRESS)"' -D'COMP_LEVEL="$(COMP_LEVEL)"' -D'COMP_VERSION="$(UPX_VER)"'
+		UPX_SPLIT_PREFIX   = $(OBJDIR)/signing/upx.
+		UPX_INFO_TOOL      = $(shell echo '|  UPX      = $(UPX)\n')
+		UPX_INFO           = $(shell echo '|  Packer   : $(UPX_VER) (compression level $(COMP_LEVEL))\n')
+		UPX_COMMAND_OSCAM  = $(UPX) -q $(COMP_LEVEL) $@ | $(GREP) '^[[:space:]]*[[:digit:]]* ->' | xargs | cat | xargs -0 printf 'UPX \t%s';
+	endif
+endif
+
+# Enable binary signing
+ifeq "$(shell ./config.sh --enabled WITH_SIGNING)" "Y"
+	SIGN_CERT   := $(shell ./config.sh --create-cert ecdsa prime256v1 ca 2>/dev/null || false)
+	SIGN_CERT    = $(shell ./config.sh --cert-file cert || echo "n.a.")
+
+	ifeq ($(SIGN_CERT),n.a.)
+		override WITH_SIGNING = "N"
+		SIGN_COMMAND_OSCAM = $(SAY) "SIGN	Disabled due to missing of certificate files!";
+	else
+		override USE_SSL=1
+
+		SIGN_PRIVKEY   = $(shell ./config.sh --cert-file privkey)
+		SIGN_MARKER    = $(shell ./config.sh --sign-marker)
+		SIGN_UPXMARKER = $(shell ./config.sh --upx-marker)
+		SIGN_PUBKEY    = $(OBJDIR)/signing/pkey
+		SIGN_HASH      = $(OBJDIR)/signing/sha256
+		SIGN_DIGEST    = $(OBJDIR)/signing/digest
+		SIGN_SUBJECT   = $(subst $\',$\'$\"$\'$\"$\',$(shell ./config.sh --cert-info | head -n 1))
+		SIGN_SIGALGO   = $(shell ./config.sh --cert-info | tail -n 1)
+		SIGN_VALID     = $(shell ./config.sh --cert-info | head -n 4 | tail -n 1)
+		SIGN_PUBALGO   = $(shell ./config.sh --cert-info | head -n 5 | tail -n 1)
+		SIGN_PUBBIT    = $(shell ./config.sh --cert-info | head -n 6 | tail -n 1)
+		SIGN_VER       = ${shell ($(SSL) version 2>/dev/null || echo "n.a.") | head -n 1 | awk -F'(' '{ print $$1 }' | xargs}
+		SIGN_INFO      = $(shell echo '|  Signing  : $(SIGN_VER)\n|             $(SIGN_PUBALGO), $(SIGN_PUBBIT), $(SIGN_SIGALGO),\n|             Valid $(SIGN_VALID), $(SIGN_SUBJECT)\n')
+		SIGN_INFO_TOOL = $(shell echo '|  SSL      = $(SSL)\n')
+		override STD_DEFS += -DCERT_ALGO_$(shell ./config.sh --cert-info | head -n 5 | tail -n 1 | awk -F':|-' '{ print toupper($$2) }' | xargs)
+		SIGN_COMMAND_OSCAM += sha256sum $@ | awk '{ print $$1 }' | tr -d '\n' > $(SIGN_HASH);
+		SIGN_COMMAND_OSCAM += printf 'SIGN	SHA256('; $(STAT) -c %s $(SIGN_HASH) | tr -d '\n'; printf '): '; cat $(SIGN_HASH); printf ' -> ';
+		SIGN_COMMAND_OSCAM += $(SSL) x509 -pubkey -noout -in $(SIGN_CERT)         -out $(SIGN_PUBKEY);
+		SIGN_COMMAND_OSCAM += $(SSL) dgst -sha256      -sign $(SIGN_PRIVKEY)      -out $(SIGN_DIGEST) $(SIGN_HASH);
+		SIGN_COMMAND_OSCAM += $(SSL) dgst -sha256    -verify $(SIGN_PUBKEY) -signature $(SIGN_DIGEST) $(SIGN_HASH) | tr -d '\n';
+		SIGN_COMMAND_OSCAM += [ -f $(UPX_SPLIT_PREFIX)aa ] && cat $(UPX_SPLIT_PREFIX)aa > $@;
+		SIGN_COMMAND_OSCAM += printf '$(SIGN_MARKER)' | cat - $(SIGN_DIGEST) >> $@;
+		SIGN_COMMAND_OSCAM += [ -f $(UPX_SPLIT_PREFIX)ab ] && cat $(UPX_SPLIT_PREFIX)ab >> $@;
+		SIGN_COMMAND_OSCAM += printf ' <- DIGEST('; $(STAT) -c %s $(SIGN_DIGEST) | tr -d '\n'; printf ')\n';
+		ifdef USE_COMPRESS
+			ifneq ($(UPX_VER),n.a.)
+				UPX_COMMAND_OSCAM  += $(SPLIT) --bytes=$$($(GREP) -oba '$(SIGN_UPXMARKER)' $@ | tail -1 | awk -F':' '{ print $$1 }') $@ $(UPX_SPLIT_PREFIX);
+				UPX_COMMAND_OSCAM  += $(SIGN_COMMAND_OSCAM)
+			endif
+		endif
+	endif
+endif
 
 # The linker for powerpc have bug that prevents --gc-sections from working
 # Check for the linker version and if it matches disable --gc-sections
@@ -76,15 +168,15 @@ LINKER_VER := $(shell set -e; VER="`$(CC) $(LINKER_VER_OPT) 2>&1`"; echo $$VER |
 
 # dm500 toolchain
 ifeq "$(LINKER_VER)" "20040727"
-LDFLAGS :=
+	LDFLAGS :=
 endif
 # dm600/7000/7020 toolchain
 ifeq "$(LINKER_VER)" "20041121"
-LDFLAGS :=
+	LDFLAGS :=
 endif
 # The OS X linker do not support --gc-sections
 ifeq ($(uname_S),Darwin)
-LDFLAGS :=
+	LDFLAGS :=
 endif
 
 # The compiler knows for what target it compiles, so use this information
@@ -99,61 +191,68 @@ DEFAULT_SU980_LIB = -lentropic -lrt
 DEFAULT_AZBOX_LIB = -Lextapi/openxcas -lOpenXCASAPI
 DEFAULT_LIBCRYPTO_LIB = -lcrypto
 DEFAULT_SSL_LIB = -lssl
+DEFAULT_LIBDVBCSA_LIB = -ldvbcsa
 ifeq ($(uname_S),Linux)
-DEFAULT_LIBUSB_LIB = -lusb-1.0 -lrt
+	DEFAULT_LIBUSB_LIB = -lusb-1.0 -lrt
 else
-DEFAULT_LIBUSB_LIB = -lusb-1.0
+	DEFAULT_LIBUSB_LIB = -lusb-1.0
 endif
 # Since FreeBSD 8 (released in 2010) they are using their own
 # libusb that is API compatible to libusb but with different soname
 ifeq ($(uname_S),FreeBSD)
-DEFAULT_LIBUSB_LIB = -lusb
-endif
-ifeq ($(uname_S),Darwin)
-DEFAULT_LIBUSB_FLAGS = -I/opt/local/include
-DEFAULT_LIBUSB_LIB = -L/opt/local/lib -lusb-1.0
-DEFAULT_PCSC_FLAGS = -isysroot $(OSX_SDK)
-DEFAULT_PCSC_LIB = -isysroot $(OSX_SDK) -framework IOKit -framework CoreFoundation -framework PCSC
+	DEFAULT_SSL_FLAGS = -I/usr/include
+	DEFAULT_LIBUSB_LIB = -lusb
+	DEFAULT_PCSC_FLAGS = -I/usr/local/include/PCSC
+	DEFAULT_PCSC_LIB = -L/usr/local/lib -lpcsclite
+else ifeq ($(uname_S),Darwin)
+	DEFAULT_SSL_FLAGS = -I/usr/local/opt/openssl/include
+	DEFAULT_SSL_LIB = -L/usr/local/opt/openssl/lib -lssl
+	DEFAULT_LIBCRYPTO_LIB = -L/usr/local/opt/openssl/lib -lcrypto
+	DEFAULT_LIBDVBCSA_FLAGS = -I/usr/local/opt/libdvbcsa/include
+	DEFAULT_LIBDVBCSA_LIB = -L/usr/local/opt/libdvbcsa/lib -ldvbcsa
+	DEFAULT_LIBUSB_FLAGS = -I/usr/local/opt/libusb/include
+	DEFAULT_LIBUSB_LIB = -L/usr/local/opt/libusb/lib -lusb-1.0 -framework IOKit -framework CoreFoundation -framework Security
+	DEFAULT_PCSC_FLAGS = -I/usr/local/opt/pcsc-lite/include/PCSC
+	DEFAULT_PCSC_LIB = -L/usr/local/opt/pcsc-lite/lib -lpcsclite -framework IOKit -framework CoreFoundation -framework PCSC
 else
-# Get the compiler's last include PATHs. Basicaly it is /usr/include
-# but in case of cross compilation it might be something else.
-#
-# Since using -Iinc_path instructs the compiler to use inc_path
-# (without add the toolchain system root) we need to have this hack
-# to get the "real" last include path. Why we needs this?
-# Well, the PCSC headers are broken and rely on having the directory
-# that they are installed it to be in the include PATH.
-#
-# We can't just use -I/usr/include/PCSC because it won't work in
-# case of cross compilation.
-TOOLCHAIN_INC_DIR := $(strip $(shell echo | $(CC) -Wp,-v -xc - -fsyntax-only 2>&1 | grep include$ | tail -n 1))
-DEFAULT_PCSC_FLAGS = -I$(TOOLCHAIN_INC_DIR)/PCSC -I$(TOOLCHAIN_INC_DIR)/../local/include/PCSC
-DEFAULT_PCSC_LIB = -lpcsclite
+	# Get the compiler's last include PATHs. Basicaly it is /usr/include
+	# but in case of cross compilation it might be something else.
+	#
+	# Since using -Iinc_path instructs the compiler to use inc_path
+	# (without add the toolchain system root) we need to have this hack
+	# to get the "real" last include path. Why we needs this?
+	# Well, the PCSC headers are broken and rely on having the directory
+	# that they are installed it to be in the include PATH.
+	#
+	# We can't just use -I/usr/include/PCSC because it won't work in
+	# case of cross compilation.
+	TOOLCHAIN_INC_DIR := $(strip $(shell echo | $(CC) -Wp,-v -xc - -fsyntax-only 2>&1 | $(GREP) include$ | tail -n 1))
+	DEFAULT_SSL_FLAGS = -I$(TOOLCHAIN_INC_DIR) -I$(TOOLCHAIN_INC_DIR)/../../include -I$(TOOLCHAIN_INC_DIR)/../local/include
+	DEFAULT_PCSC_FLAGS = -I$(TOOLCHAIN_INC_DIR)/PCSC -I$(TOOLCHAIN_INC_DIR)/../../include/PCSC -I$(TOOLCHAIN_INC_DIR)/../local/include/PCSC
+	DEFAULT_PCSC_LIB = -lpcsclite
 endif
 
 ifeq ($(uname_S),Cygwin)
-DEFAULT_PCSC_LIB += -lwinscard
+	DEFAULT_PCSC_LIB += -lwinscard
 endif
-
-DEFAULT_UTF8_FLAGS = -DWITH_UTF8
 
 # Function to initialize USE related variables
 #   Usage: $(eval $(call prepare_use_flags,FLAG_NAME,PLUS_TARGET_TEXT))
 define prepare_use_flags
 override DEFAULT_$(1)_FLAGS:=$$(strip -DWITH_$(1)=1 $$(DEFAULT_$(1)_FLAGS))
 ifdef USE_$(1)
-$(1)_FLAGS:=$$(DEFAULT_$(1)_FLAGS)
-$(1)_CFLAGS:=$$($(1)_FLAGS)
-$(1)_LDFLAGS:=$$($(1)_FLAGS)
-$(1)_LIB:=$$(DEFAULT_$(1)_LIB)
-ifneq "$(2)" ""
-override PLUS_TARGET:=$$(PLUS_TARGET)-$(2)
-endif
-override USE_CFLAGS+=$$($(1)_CFLAGS)
-override USE_LDFLAGS+=$$($(1)_LDFLAGS)
-override USE_LIBS+=$$($(1)_LIB)
-override USE_FLAGS+=$$(if $$(USE_$(1)),USE_$(1))
-endif
+	$(1)_FLAGS:=$$(DEFAULT_$(1)_FLAGS)
+	$(1)_CFLAGS:=$$($(1)_FLAGS)
+	$(1)_LDFLAGS:=$$($(1)_FLAGS)
+	$(1)_LIB:=$$(DEFAULT_$(1)_LIB)
+	ifneq "$(2)" ""
+		override PLUS_TARGET:=$$(PLUS_TARGET)-$(2)
+	endif
+	override USE_CFLAGS+=$$($(1)_CFLAGS)
+	override USE_LDFLAGS+=$$($(1)_LDFLAGS)
+	override USE_LIBS+=$$($(1)_LIB)
+	override USE_FLAGS+=$$(if $$(USE_$(1)),USE_$(1))
+	endif
 endef
 
 # Initialize USE variables
@@ -168,13 +267,20 @@ $(eval $(call prepare_use_flags,SSL,ssl))
 $(eval $(call prepare_use_flags,LIBCRYPTO,))
 $(eval $(call prepare_use_flags,LIBUSB,libusb))
 $(eval $(call prepare_use_flags,PCSC,pcsc))
-$(eval $(call prepare_use_flags,UTF8))
+$(eval $(call prepare_use_flags,LIBDVBCSA,libdvbcsa))
+$(eval $(call prepare_use_flags,COMPRESS,upx))
+
+ifdef USE_SSL
+	SSL_HEADER = $(shell find $(subst -DWITH_SSL=1,,$(subst -I,,$(SSL_FLAGS))) -name opensslv.h -print 2>/dev/null | tail -n 1)
+	SSL_VER    = ${shell ($(GREP) 'OpenSSL [[:digit:]][^ ]*' $(SSL_HEADER) /dev/null 2>/dev/null || echo '"n.a."') | tail -n 1 | awk -F'"' '{ print $$2 }' | xargs}
+	SSL_INFO   = $(shell echo ', $(SSL_VER)')
+endif
 
 # Add PLUS_TARGET and EXTRA_TARGET to TARGET
 ifdef NO_PLUS_TARGET
-override TARGET := $(TARGET)$(EXTRA_TARGET)
+	override TARGET := $(TARGET)$(EXTRA_TARGET)
 else
-override TARGET := $(TARGET)$(PLUS_TARGET)$(EXTRA_TARGET)
+	override TARGET := $(TARGET)$(PLUS_TARGET)$(EXTRA_TARGET)
 endif
 
 EXTRA_CFLAGS = $(EXTRA_FLAGS)
@@ -193,9 +299,9 @@ override STD_DEFS += -D'CS_TARGET="$(TARGET)"'
 Q =
 SAY = @true
 ifndef V
-Q = @
-NP = --no-print-directory
-SAY = @echo
+	Q = @
+	NP = --no-print-directory
+	SAY = @echo
 endif
 
 BINDIR := Distribution
@@ -206,13 +312,13 @@ OBJDIR := $(BUILD_DIR)/$(TARGET)
 # These variables will be used to select only needed files for compilation
 -include $(OBJDIR)/config.mak
 
-OSCAM_BIN := $(BINDIR)/oscam-$(VER)$(SVN_REV)-$(subst cygwin,cygwin.exe,$(TARGET))
+OSCAM_BIN := $(BINDIR)/oscam-$(VER)@$(GIT_SHA)-$(subst cygwin,cygwin.exe,$(TARGET))
 TESTS_BIN := tests.bin
-LIST_SMARGO_BIN := $(BINDIR)/list_smargo-$(VER)$(SVN_REV)-$(subst cygwin,cygwin.exe,$(TARGET))
+LIST_SMARGO_BIN := $(BINDIR)/list_smargo-$(VER)@$(GIT_SHA)-$(subst cygwin,cygwin.exe,$(TARGET))
 
 # Build list_smargo-.... only when WITH_LIBUSB build is requested.
 ifndef USE_LIBUSB
-override LIST_SMARGO_BIN =
+	override LIST_SMARGO_BIN =
 endif
 
 SRC-$(CONFIG_LIB_AES) += cscrypt/aes.c
@@ -235,6 +341,9 @@ SRC-$(CONFIG_LIB_IDEA) += cscrypt/i_skey.c
 SRC-y += cscrypt/md5.c
 SRC-$(CONFIG_LIB_RC6) += cscrypt/rc6.c
 SRC-$(CONFIG_LIB_SHA1) += cscrypt/sha1.c
+SRC-$(CONFIG_LIB_MDC2) += cscrypt/mdc2.c
+SRC-$(CONFIG_LIB_FAST_AES) += cscrypt/fast_aes.c
+SRC-$(CONFIG_LIB_SHA256) += cscrypt/sha256.c
 
 SRC-$(CONFIG_WITH_CARDREADER) += csctapi/atr.c
 SRC-$(CONFIG_WITH_CARDREADER) += csctapi/icc_async.c
@@ -272,7 +381,7 @@ SRC-$(CONFIG_CS_CACHEEX) += module-csp.c
 SRC-$(CONFIG_CW_CYCLE_CHECK) += module-cw-cycle-check.c
 SRC-$(CONFIG_WITH_AZBOX) += module-dvbapi-azbox.c
 SRC-$(CONFIG_WITH_MCA) += module-dvbapi-mca.c
-### SRC-$(CONFIG_WITH_COOLAPI) += module-dvbapi-coolapi.c 
+### SRC-$(CONFIG_WITH_COOLAPI) += module-dvbapi-coolapi.c
 ### experimental reversed API
 SRC-$(CONFIG_WITH_COOLAPI) += module-dvbapi-coolapi-legacy.c
 SRC-$(CONFIG_WITH_COOLAPI2) += module-dvbapi-coolapi.c
@@ -286,7 +395,6 @@ SRC-$(CONFIG_MODULE_GBOX) += module-gbox-sms.c
 SRC-$(CONFIG_MODULE_GBOX) += module-gbox-remm.c
 SRC-$(CONFIG_MODULE_GBOX) += module-gbox-cards.c
 SRC-$(CONFIG_MODULE_GBOX) += module-gbox.c
-SRC-$(CONFIG_IRDETO_GUESSING) += module-ird-guess.c
 SRC-$(CONFIG_LCDSUPPORT) += module-lcd.c
 SRC-$(CONFIG_LEDSUPPORT) += module-led.c
 SRC-$(CONFIG_MODULE_MONITOR) += module-monitor.c
@@ -297,6 +405,7 @@ SRC-$(CONFIG_MODULE_GHTTP) += module-ghttp.c
 SRC-$(CONFIG_MODULE_RADEGAST) += module-radegast.c
 SRC-$(CONFIG_MODULE_SCAM) += module-scam.c
 SRC-$(CONFIG_MODULE_SERIAL) += module-serial.c
+SRC-$(CONFIG_MODULE_STREAMRELAY) += module-streamrelay.c
 SRC-$(CONFIG_WITH_LB) += module-stat.c
 SRC-$(CONFIG_WEBIF) += module-webif-lib.c
 SRC-$(CONFIG_WEBIF) += module-webif-tpl.c
@@ -313,7 +422,9 @@ SRC-$(CONFIG_READER_DRE) += reader-dre-common.c
 SRC-$(CONFIG_READER_DRE) += reader-dre-st20.c
 SRC-$(CONFIG_READER_GRIFFIN) += reader-griffin.c
 SRC-$(CONFIG_READER_IRDETO) += reader-irdeto.c
+SRC-$(CONFIG_READER_NAGRA_COMMON) += reader-nagra-common.c
 SRC-$(CONFIG_READER_NAGRA) += reader-nagra.c
+SRC-$(CONFIG_READER_NAGRA_MERLIN) += reader-nagracak7.c
 SRC-$(CONFIG_READER_SECA) += reader-seca.c
 SRC-$(CONFIG_READER_TONGFANG) += reader-tongfang.c
 SRC-$(CONFIG_READER_VIACCESS) += reader-viaccess.c
@@ -321,6 +432,7 @@ SRC-$(CONFIG_READER_VIDEOGUARD) += reader-videoguard-common.c
 SRC-$(CONFIG_READER_VIDEOGUARD) += reader-videoguard1.c
 SRC-$(CONFIG_READER_VIDEOGUARD) += reader-videoguard12.c
 SRC-$(CONFIG_READER_VIDEOGUARD) += reader-videoguard2.c
+SRC-$(CONFIG_WITH_SIGNING) += oscam-signing.c
 SRC-y += oscam-aes.c
 SRC-y += oscam-array.c
 SRC-y += oscam-hashtable.c
@@ -330,7 +442,6 @@ SRC-y += oscam-client.c
 SRC-y += oscam-conf.c
 SRC-y += oscam-conf-chk.c
 SRC-y += oscam-conf-mk.c
-SRC-y += oscam-config-null.c
 SRC-y += oscam-config-account.c
 SRC-y += oscam-config-global.c
 SRC-y += oscam-config-reader.c
@@ -355,8 +466,8 @@ SRC-y += oscam.c
 # config.c is automatically generated by config.sh in OBJDIR
 SRC-y += config.c
 ifdef BUILD_TESTS
-SRC-y += tests.c
-override STD_DEFS += -DBUILD_TESTS=1
+	SRC-y += tests.c
+	override STD_DEFS += -DBUILD_TESTS=1
 endif
 
 SRC := $(SRC-y)
@@ -367,13 +478,17 @@ SRC := $(subst config.c,$(OBJDIR)/config.c,$(SRC))
 # starts the compilation.
 all:
 	@./config.sh --use-flags "$(USE_FLAGS)" --objdir "$(OBJDIR)" --make-config.mak
-	@-mkdir -p $(OBJDIR)/cscrypt $(OBJDIR)/csctapi $(OBJDIR)/minilzo $(OBJDIR)/webif
+	@-mkdir -p $(OBJDIR)/cscrypt $(OBJDIR)/csctapi $(OBJDIR)/minilzo $(OBJDIR)/webif $(OBJDIR)/signing
 	@-printf "\
 +-------------------------------------------------------------------------------\n\
-| OSCam ver: $(VER) rev: $(SVN_REV) target: $(TARGET)\n\
+| OSCam Ver.: $(VER) sha: $(GIT_SHA) target: $(TARGET)\n\
+| Build Date: $(BUILD_DATE)\n\
 | Tools:\n\
 |  CROSS    = $(CROSS_DIR)$(CROSS)\n\
 |  CC       = $(CC)\n\
+|  STRIP    = $(STRIP)\n\
+$(UPX_INFO_TOOL)\
+$(SIGN_INFO_TOOL)\
 | Settings:\n\
 |  CONF_DIR = $(CONF_DIR)\n\
 |  CC_OPTS  = $(strip $(CC_OPTS))\n\
@@ -387,11 +502,14 @@ all:
 |  Protocols: $(shell ./config.sh --use-flags "$(USE_FLAGS)" --show-enabled protocols | sed -e 's|MODULE_||g')\n\
 |  Readers  : $(shell ./config.sh --use-flags "$(USE_FLAGS)" --show-enabled readers | sed -e 's|READER_||g')\n\
 |  CardRdrs : $(shell ./config.sh --use-flags "$(USE_FLAGS)" --show-enabled card_readers | sed -e 's|CARDREADER_||g')\n\
-|  Compiler : $(shell $(CC) --version 2>/dev/null | head -n 1)\n\
+|  Compiler : $(CCVERSION)$(SSL_INFO)\n\
+$(UPX_INFO)\
+$(SIGN_INFO)\
 |  Config   : $(OBJDIR)/config.mak\n\
 |  Binary   : $(OSCAM_BIN)\n\
 +-------------------------------------------------------------------------------\n"
 ifeq "$(shell ./config.sh --enabled WEBIF)" "Y"
+	@-$(MAKE) --no-print-directory --quiet -C webif clean
 	@$(MAKE) --no-print-directory --quiet -C webif
 endif
 	@$(MAKE) --no-print-directory $(OSCAM_BIN) $(LIST_SMARGO_BIN)
@@ -399,11 +517,14 @@ endif
 $(OSCAM_BIN).debug: $(OBJ)
 	$(SAY) "LINK	$@"
 	$(Q)$(CC) $(LDFLAGS) $(OBJ) $(LIBS) -o $@
+	$(Q)$(SIGN_COMMAND_OSCAM)
 
 $(OSCAM_BIN): $(OSCAM_BIN).debug
 	$(SAY) "STRIP	$@"
 	$(Q)cp $(OSCAM_BIN).debug $(OSCAM_BIN)
 	$(Q)$(STRIP) $(OSCAM_BIN)
+	$(Q)$(SIGN_COMMAND_OSCAM)
+	$(Q)$(UPX_COMMAND_OSCAM)
 
 $(LIST_SMARGO_BIN): utils/list_smargo.c
 	$(SAY) "BUILD	$@"
@@ -414,7 +535,7 @@ $(OBJDIR)/config.o: $(OBJDIR)/config.c
 	$(Q)$(CC) $(STD_DEFS) $(CC_OPTS) $(CC_WARN) $(CFLAGS) -c $< -o $@
 
 $(OBJDIR)/%.o: %.c Makefile
-	@$(CC) -MP -MM -MT $@ -o $(subst .o,.d,$@) $<
+	@$(CC) $(CFLAGS) -MP -MM -MT $@ -o $(subst .o,.d,$@) $<
 	$(SAY) "CC	$<"
 	$(Q)$(CC) $(STD_DEFS) $(CC_OPTS) $(CC_WARN) $(CFLAGS) -c $< -o $@
 
@@ -487,38 +608,45 @@ OSCam build system documentation\n\
    process. Setting the variables lets you enable additional features, request\n\
    extra libraries and more. Currently recognized build variables are:\n\
 \n\
-   CROSS=prefix   - Set tools prefix. This variable is used when OScam is being\n\
-                    cross compiled. For example if you want to cross compile\n\
-                    for SH4 architecture you can run: 'make CROSS=sh4-linux-'\n\
-                    If you don't have the directory where cross compilers are\n\
-                    in your PATH you can run:\n\
-                    'make CROSS=/opt/STM/STLinux-2.3/devkit/sh4/bin/sh4-linux-'\n\
+   CROSS=prefix    - Set tools prefix. This variable is used when OScam is being\n\
+                     cross compiled. For example if you want to cross compile\n\
+                     for SH4 architecture you can run: 'make CROSS=sh4-linux-'\n\
+                     If you don't have the directory where cross compilers are\n\
+                     in your PATH you can run:\n\
+                     'make CROSS=/opt/STM/STLinux-2.3/devkit/sh4/bin/sh4-linux-'\n\
 \n\
-   CROSS_DIR=dir  - Set tools directory. This variable is added in front of\n\
-                    CROSS variable. CROSS_DIR is useful if you want to use\n\
-                    predefined targets that are setting CROSS, but you don't have\n\
-                    the cross compilers in your PATH. For example:\n\
-                    'make sh4 CROSS_DIR=/opt/STM/STLinux-2.3/devkit/sh4/bin/'\n\
-                    'make dm500 CROSS_DIR=/opt/cross/dm500/cdk/bin/'\n\
+   CROSS_DIR=dir   - Set tools directory. This variable is added in front of\n\
+                     CROSS variable. CROSS_DIR is useful if you want to use\n\
+                     predefined targets that are setting CROSS, but you don't have\n\
+                     the cross compilers in your PATH. For example:\n\
+                     'make sh4 CROSS_DIR=/opt/STM/STLinux-2.3/devkit/sh4/bin/'\n\
+                     'make dm500 CROSS_DIR=/opt/cross/dm500/cdk/bin/'\n\
 \n\
-   CONF_DIR=/dir  - Set OSCam config directory. For example to change config\n\
-                    directory to /etc run: 'make CONF_DIR=/etc'\n\
-                    The default config directory is: '$(CONF_DIR)'\n\
+   CONF_DIR=/dir   - Set OSCam config directory. For example to change config\n\
+                     directory to /etc run: 'make CONF_DIR=/etc'\n\
+                     The default config directory is: '$(CONF_DIR)'\n\
 \n\
-   CC_OPTS=text   - This variable holds compiler optimization parameters.\n\
-                    Default CC_OPTS value is:\n\
-                    '$(CC_OPTS)'\n\
-                    To add text to this variable set EXTRA_CC_OPTS=text.\n\
+   CC_OPTS=text    - This variable holds compiler optimization parameters.\n\
+                     Default CC_OPTS value is:\n\
+                     '$(CC_OPTS)'\n\
+                     To add text to this variable set EXTRA_CC_OPTS=text.\n\
 \n\
-   CC_WARN=text   - This variable holds compiler warning parameters.\n\
-                    Default CC_WARN value is:\n\
-                    '$(CC_WARN)'\n\
-                    To add text to this variable set EXTRA_CC_WARN=text.\n\
+   CC_WARN=text    - This variable holds compiler warning parameters.\n\
+                     Default CC_WARN value is:\n\
+                     '$(CC_WARN)'\n\
+                     To add text to this variable set EXTRA_CC_WARN=text.\n\
 \n\
-   V=1            - Request build process to print verbose messages. By\n\
-                    default the only messages that are shown are simple info\n\
-                    what is being compiled. To request verbose build run:\n\
-                    'make V=1'\n\
+   V=1             - Request build process to print verbose messages. By\n\
+                     default the only messages that are shown are simple info\n\
+                     what is being compiled. To request verbose build run:\n\
+                     'make V=1'\n\
+\n\
+   COMP_LEVEL=text - This variable holds the upx compression level and can be\n\
+                     used in combination with USE_COMPRESS=1\n\
+                     For example to change compression level to brute\n\
+                     you can run: 'make USE_COMPRESS=1 COMP_LEVEL=--brute'\n\
+                     To get a list of available compression levels run: 'upx --help'\n\
+                     The default upx compression level is: '$(COMP_LEVEL)'\n\
 \n\
  Extra build variables:\n\
    These variables add text to build variables. They are useful if you want\n\
@@ -549,6 +677,8 @@ OSCam build system documentation\n\
  Use flags:\n\
    Use flags are used to request additional libraries or features to be used\n\
    by OSCam. Currently defined USE_xxx flags are:\n\
+\n\
+   USE_COMPRESS=1  - Request compressing oscam binary with upx.\n\
 \n\
    USE_LIBUSB=1    - Request linking with libusb. The variables that control\n\
                      USE_LIBUSB=1 build are:\n\
@@ -658,7 +788,13 @@ OSCam build system documentation\n\
                          SSL_LIB='$(DEFAULT_SSL_LIB)'\n\
                      Using USE_SSL=1 adds to '-ssl' to PLUS_TARGET.\n\
 \n\
-   USE_UTF8=1       - Request UTF-8 enabled webif by default.\n\
+   USE_LIBDVBCSA=1 - Request linking with libdvbcsa. USE_LIBDVBCSA is automatically\n\
+                     enabled if the build is configured with STREAMRELAY support. The\n\
+                     variables that control USE_LIBDVBCSA=1 build are:\n\
+                         LIBDVBCSA_FLAGS='$(DEFAULT_LIBDVBCSA_FLAGS)'\n\
+                         LIBDVBCSA_CFLAGS='$(DEFAULT_LIBDVBCSA_FLAGS)'\n\
+                         LIBDVBCSA_LDFLAGS='$(DEFAULT_LIBDVBCSA_FLAGS)'\n\
+                         LIBDVBCSA_LIB='$(DEFAULT_LIBDVBCSA_LIB)'\n\
 \n\
  Automatically intialized variables:\n\
 \n\
@@ -675,8 +811,8 @@ OSCam build system documentation\n\
 \n\
    OSCAM_BIN=text  - This variable controls how the oscam binary will be named.\n\
                      Default OSCAM_BIN value is:\n\
-                      'BINDIR/oscam-VERSVN_REV-TARGET'\n\
-                     Once the variables (BINDIR, VER, SVN_REV and TARGET) are\n\
+                      'BINDIR/oscam-VER@$GIT_SHA-TARGET'\n\
+                     Once the variables (BINDIR, VER, GIT_SHA and TARGET) are\n\
                      replaced, the resulting filename can look like this:\n\
                       'Distribution/oscam-1.20-unstable_svn7404-i486-slackware-linux-static'\n\
                      For example you can run: 'make OSCAM_BIN=my-oscam'\n\
@@ -775,6 +911,8 @@ OSCam build system documentation\n\
      make USE_LIBCRYPTO=1 LIBCRYPTO_LIB=\"/usr/lib/libcrypto.a\"\n\n\
    Build OSCam with static libssl and libcrypto:\n\
      make USE_SSL=1 SSL_LIB=\"/usr/lib/libssl.a\" LIBCRYPTO_LIB=\"/usr/lib/libcrypto.a\"\n\n\
+   Build OSCam with static libdvbcsa:\n\
+     make USE_LIBDVBCSA=1 LIBDVBCSA_LIB=\"/usr/lib/libdvbcsa.a\"\n\n\
    Build with verbose messages and size optimizations:\n\
      make V=1 CC_OPTS=-Os\n\n\
    Build and set oscam file name:\n\

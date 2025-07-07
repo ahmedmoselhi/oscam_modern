@@ -214,9 +214,6 @@ DESCRIPTIONS
        password = password
 	  password for remote reader
 
-       mg-encrypted = D: { <IP|hostname> { <local port> <remote port> { <password> { <level> <level> }}}}[,<local MAC address>]
-	  mgcamd encrypted gbox line, default MAC address = eth0
-
        services = [!]services[,[!]<services>]...
 	  reader [de]assignment to service group, default=none
 
@@ -481,9 +478,6 @@ DESCRIPTIONS
 	    0 = resharing for direct peer only
 	    x = resharing for direct peer and share level x
 
-       cccwantemu = 0|1
-	  1 = request to provide emu from CCCam server, too, default:0
-
        ccckeepalive = 0|1
 	  1 = send keepalive messages to keep connection to remote CCCam server up, default:0
 
@@ -672,8 +666,8 @@ EXAMPLES
 	   caid     = 1100
 
 SEE ALSO
-       list_smargo(1), oscam(1), oscam.ac(5), oscam.cacheex(5), oscam.cert(5), oscam.conf(5), oscam.dvbapi(5),	oscam.fakecws(5),
-       oscam.guess(5),	oscam.ird(5),  oscam.provid(5),  oscam.ratelimit(5),  oscam.services(5), oscam.srvid(5), oscam.srvid2(5),
+       list_smargo(1), oscam(1), oscam.ac(5), oscam.cacheex(5), oscam.cert(5), oscam.conf(5), oscam.dvbapi(5), oscam.fakecws(5),
+       oscam.guess(5), oscam.ird(5), oscam.provid(5), oscam.ratelimit(5), oscam.services(5), oscam.srvid(5), oscam.srvid2(5),
        oscam.tiers(5), oscam.user(5), oscam.whitelist(5)
 
 

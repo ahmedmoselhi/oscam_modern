@@ -11,11 +11,9 @@
 #include "minilzo/minilzo.h"
 #endif
 
-extern uint8_t cs_http_use_utf8;
-
 /* struct template templates[] that comes from webif/pages.c is recreated as
-   struct tpl tpls[] because we need to add additional fields such as tpl_name_hash
-   and possibly preprocess templates[] struct before using it. */
+	struct tpl tpls[] because we need to add additional fields such as tpl_name_hash
+	and possibly preprocess templates[] struct before using it. */
 
 struct tpl
 {
@@ -48,7 +46,7 @@ static void tpl_init_base64(struct tpl *tpl)
 	int hdr_len = snprintf(b64_buf, b64_buf_len, "data:%s;base64,", template_get_mimetype(tpl->tpl_type));
 	base64_encode(tpl->tpl_data, tpl->tpl_data_len, b64_buf + hdr_len, b64_buf_len - hdr_len);
 	tpl->tpl_data = tpl->extra_data = b64_buf;
-	tpl->tpl_data_len = strlen(b64_buf);
+	tpl->tpl_data_len = cs_strlen(b64_buf);
 }
 
 void webif_tpls_prepare(void)
@@ -92,13 +90,13 @@ void webif_tpls_prepare(void)
 		tpls[i].tpl_deps      = tpls_data + templates[i].tpl_deps_ofs;
 		tpls[i].tpl_data_len  = templates[i].tpl_data_len;
 		tpls[i].tpl_type      = templates[i].tpl_type;
-		tpls[i].tpl_name_hash = jhash(tpls[i].tpl_name, strlen(tpls[i].tpl_name));
+		tpls[i].tpl_name_hash = jhash(tpls[i].tpl_name, cs_strlen(tpls[i].tpl_name));
 		tpl_init_base64(&tpls[i]);
 	}
 #else
 	for(i = 0; i < tpls_count; ++i)
 	{
-		tpls[i].tpl_name_hash = jhash(templates[i].tpl_name, strlen(templates[i].tpl_name));
+		tpls[i].tpl_name_hash = jhash(templates[i].tpl_name, cs_strlen(templates[i].tpl_name));
 		tpls[i].tpl_name      = templates[i].tpl_name;
 		tpls[i].tpl_data      = templates[i].tpl_data;
 		tpls[i].tpl_deps      = templates[i].tpl_deps;
@@ -112,10 +110,10 @@ void webif_tpls_prepare(void)
 void webif_tpls_free(void)
 {
 	int32_t i, tmp;
-	
+
 	tmp = tpls_count;
 	tpls_count = 0;
-	
+
 	for(i = 0; i < tmp; ++i)
 	{
 		NULLFREE(tpls[i].extra_data);
@@ -125,7 +123,7 @@ void webif_tpls_free(void)
 }
 
 /* Adds a name->value-mapping or appends to it. You will get a reference back which you may freely
-   use (but you should not call free/realloc on this!)*/
+	 use (but you should not call free/realloc on this!)*/
 void tpl_addVar(struct templatevars *vars, uint8_t addmode, const char *name, const char *value)
 {
 	if(name == NULL) { return; }
@@ -149,11 +147,11 @@ void tpl_addVar(struct templatevars *vars, uint8_t addmode, const char *name, co
 			if(!cs_realloc(&(*vars).vartypes, (*vars).varsalloc * 2 * sizeof(uint8_t *))) { return; }
 			(*vars).varsalloc = (*vars).varscnt * 2;
 		}
-		int32_t len = strlen(name) + 1;
+		int32_t len = cs_strlen(name) + 1;
 		if(!cs_malloc(&tmp, len)) { return; }
 		memcpy(tmp, name, len);
 		(*vars).names[(*vars).varscnt] = tmp;
-		len = strlen(value) + 1;
+		len = cs_strlen(value) + 1;
 		if(!cs_malloc(&tmp, len))
 		{
 			NULLFREE((*vars).names[(*vars).varscnt]);
@@ -166,8 +164,8 @@ void tpl_addVar(struct templatevars *vars, uint8_t addmode, const char *name, co
 	}
 	else
 	{
-		int32_t oldlen = 0, newlen = strlen(value);
-		if(addmode == TPLAPPEND || addmode == TPLAPPENDONCE) { oldlen = strlen((*vars).values[i]); }
+		int32_t oldlen = 0, newlen = cs_strlen(value);
+		if(addmode == TPLAPPEND || addmode == TPLAPPENDONCE) { oldlen = cs_strlen((*vars).values[i]); }
 		if(!cs_realloc(&((*vars).values[i]), oldlen + newlen + 1)) { return; }
 		memcpy((*vars).values[i] + oldlen, value, newlen + 1);
 		(*vars).vartypes[i] = addmode;
@@ -184,8 +182,8 @@ void tpl_addMsg(struct templatevars *vars, const char *value)
 }
 
 /* Allows to add a char array which has been allocated by malloc. It will automatically get
-  freed when calling tpl_clear(). Please do NOT free the memory yourself or realloc
-  it after having added the array here! */
+	freed when calling tpl_clear(). Please do NOT free the memory yourself or realloc
+	it after having added the array here! */
 static char *tpl_addTmp(struct templatevars *vars, char *value)
 {
 	if(value == NULL) { return ""; }
@@ -200,9 +198,9 @@ static char *tpl_addTmp(struct templatevars *vars, char *value)
 }
 
 /* Allows to do a dynamic printf without knowing and defining the needed memory size. If you specify
-   varname, the printf-result will be added/appended to the varlist, if varname=NULL it will only be returned.
-   In either case you will always get a reference back which you may freely use (but you should not call
-   free/realloc on this as it will be automatically cleaned!)*/
+	 varname, the printf-result will be added/appended to the varlist, if varname=NULL it will only be returned.
+	 In either case you will always get a reference back which you may freely use (but you should not call
+	 free/realloc on this as it will be automatically cleaned!)*/
 void tpl_printf(struct templatevars *vars, uint8_t addmode, const char *varname, const char *fmtstring, ...)
 {
 	uint32_t needed;
@@ -264,7 +262,7 @@ char *tpl_getVar(struct templatevars *vars, const char *name)
 }
 
 /* Initializes all variables for a templatevar-structure and returns a pointer to it. Make
-   sure to call tpl_clear() when you are finished or you'll run into a memory leak! */
+	 sure to call tpl_clear() when you are finished or you'll run into a memory leak! */
 struct templatevars *tpl_create(void)
 {
 	struct templatevars *vars;
@@ -325,11 +323,11 @@ void tpl_clear(struct templatevars *vars)
 /* Creates a path to a template file. You need to set the resultsize to the correct size of result. */
 char *tpl_getFilePathInSubdir(const char *path, const char *subdir, const char *name, const char *ext, char *result, uint32_t resultsize)
 {
-	int path_len = strlen(path);
+	int path_len = cs_strlen(path);
 	const char *path_fixup = "";
 	if(path_len && path[path_len - 1] != '/')
 		{ path_fixup = "/"; }
-	if(path_len + strlen(path_fixup) + strlen(name) + strlen(subdir) + strlen(ext) < resultsize)
+	if(path_len + cs_strlen(path_fixup) + cs_strlen(name) + cs_strlen(subdir) + cs_strlen(ext) < resultsize)
 	{
 		snprintf(result, resultsize, "%s%s%s%s%s", path, path_fixup, subdir, name, ext);
 	}
@@ -343,27 +341,24 @@ char *tpl_getTplPath(const char *name, const char *path, char *result, uint32_t 
 }
 
 #define check_conf(CONFIG_VAR, text) \
-    if (config_enabled(CONFIG_VAR) && strncmp(#CONFIG_VAR, text, len) == 0) { ok = 1; break; }
+		if (config_enabled(CONFIG_VAR) && strncmp(#CONFIG_VAR, text, len) == 0) { ok = 1; break; }
 
 /* Returns an unparsed template either from disk or from internal templates.
-   Note: You must free() the result after using it and you may get NULL if an error occured!*/
+	 Note: You must free() the result after using it and you may get NULL if an error occured!*/
 char *tpl_getUnparsedTpl(const char *name, int8_t removeHeader, const char *subdir)
 {
 	int32_t i;
 	char *result;
 	char *tpl_path;
-	
-	tpl_path = (cfg.http_piconpath && strlen(name) > 3 && name[0] == 'I' && name[1] == 'C' && name[2] == '_') ? cfg.http_piconpath : cfg.http_tpl;
+
+	tpl_path = (cfg.http_piconpath && cs_strlen(name) > 3 && name[0] == 'I' && name[1] == 'C' && name[2] == '_') ? cfg.http_piconpath : cfg.http_tpl;
 
 	if(tpl_path)
 	{
 		char path[255];
-		if((strlen(tpl_getFilePathInSubdir(tpl_path, subdir, name, ".tpl", path, 255)) > 0 && file_exists(path))
-				|| (strlen(subdir) > 0
-#ifdef TOUCH
-					&& strcmp(subdir, TOUCH_SUBDIR)
-#endif
-					&& strlen(tpl_getFilePathInSubdir(tpl_path, ""    , name, ".tpl", path, 255)) > 0 && file_exists(path)))
+		if((cs_strlen(tpl_getFilePathInSubdir(tpl_path, subdir, name, ".tpl", path, 255)) > 0 && file_exists(path))
+				|| (cs_strlen(subdir) > 0
+					&& cs_strlen(tpl_getFilePathInSubdir(tpl_path, ""    , name, ".tpl", path, 255)) > 0 && file_exists(path)))
 		{
 			FILE *fp;
 			char buffer[1025];
@@ -392,12 +387,12 @@ char *tpl_getUnparsedTpl(const char *name, int8_t removeHeader, const char *subd
 								char *ptr1, *ptr2, *saveptr1 = NULL, *saveptr2 = NULL;
 								for(i = 0, ptr1 = strtok_r(pch1 + 10, ";", &saveptr1); (ptr1) && i < 4 ; ptr1 = strtok_r(NULL, ";", &saveptr1), i++)
 								{
-									if(i == 3 && strlen(ptr1) > 2)
+									if(i == 3 && cs_strlen(ptr1) > 2)
 									{
 										int8_t ok = 0;
 										for(ptr2 = strtok_r(ptr1, ",", &saveptr2); (ptr2) && ok == 0 ; ptr2 = strtok_r(NULL, ",", &saveptr2))
 										{
-											size_t len = strlen(ptr2);
+											size_t len = cs_strlen(ptr2);
 											check_conf(WITH_CARDREADER, ptr2);
 											check_conf(CARDREADER_PHOENIX, ptr2);
 											check_conf(CARDREADER_DRECAS, ptr2);
@@ -414,14 +409,16 @@ char *tpl_getUnparsedTpl(const char *name, int8_t removeHeader, const char *subd
 											check_conf(CARDREADER_STAPI5, ptr2);
 											check_conf(WEBIF_LIVELOG, ptr2);
 											check_conf(WEBIF_JQUERY, ptr2);
-											check_conf(TOUCH, ptr2);
+											check_conf(WITH_COMPRESS_WEBIF, ptr2);
 											check_conf(CS_ANTICASC, ptr2);
 											check_conf(CS_CACHEEX, ptr2);
+											check_conf(CS_CACHEEX_AIO, ptr2);
 											check_conf(HAVE_DVBAPI, ptr2);
+											check_conf(WITH_EXTENDED_CW, ptr2);
+											check_conf(WITH_NEUTRINO, ptr2);
 											check_conf(READ_SDT_CHARSETS, ptr2);
 											check_conf(CLOCKFIX, ptr2);
 											check_conf(IPV6SUPPORT, ptr2);
-											check_conf(IRDETO_GUESSING, ptr2);
 											check_conf(LCDSUPPORT, ptr2);
 											check_conf(LEDSUPPORT, ptr2);
 											check_conf(MODULE_CAMD33, ptr2);
@@ -446,6 +443,7 @@ char *tpl_getUnparsedTpl(const char *name, int8_t removeHeader, const char *subd
 											check_conf(READER_DRE, ptr2);
 											check_conf(READER_IRDETO, ptr2);
 											check_conf(READER_NAGRA, ptr2);
+											check_conf(READER_NAGRA_MERLIN, ptr2);
 											check_conf(READER_SECA, ptr2);
 											check_conf(READER_TONGFANG, ptr2);
 											check_conf(READER_VIACCESS, ptr2);
@@ -489,7 +487,7 @@ char *tpl_getUnparsedTpl(const char *name, int8_t removeHeader, const char *subd
 	} // if
 
 	bool found = 0;
-	uint32_t name_hash = jhash(name, strlen(name));
+	uint32_t name_hash = jhash(name, cs_strlen(name));
 	for(i = 0; i < tpls_count; i++)
 	{
 		if(tpls[i].tpl_name_hash == name_hash)
@@ -513,18 +511,18 @@ char *tpl_getUnparsedTpl(const char *name, int8_t removeHeader, const char *subd
 }
 
 /* Returns the specified template with all variables/other templates replaced or an
-   empty string if the template doesn't exist. Do not free the result yourself, it
-   will get automatically cleaned up! */
+	 empty string if the template doesn't exist. Do not free the result yourself, it
+	 will get automatically cleaned up! */
 char *tpl_getTpl(struct templatevars *vars, const char *name)
 {
 	char *tplorg = tpl_getUnparsedTpl(name, 1, tpl_getVar(vars, "SUBDIR"));
 	if(!tplorg) { return ""; }
-	char *tplend = tplorg + strlen(tplorg);
+	char *tplend = tplorg + cs_strlen(tplorg);
 	char *pch, *pch2, *tpl = tplorg;
 	char varname[33];
 
 	int32_t tmp, respos = 0;
-	int32_t allocated = 2 * strlen(tpl) + 1;
+	int32_t allocated = 2 * cs_strlen(tpl) + 1;
 	char *result;
 	if(!cs_malloc(&result, allocated)) { return ""; }
 
@@ -549,7 +547,7 @@ char *tpl_getTpl(struct templatevars *vars, const char *name)
 				{
 					pch2 = tpl_getVar(vars, varname);
 				}
-				tmp = strlen(pch2);
+				tmp = cs_strlen(pch2);
 				if(tmp + respos + 2 >= allocated)
 				{
 					allocated = tmp + respos + 256;
@@ -587,11 +585,11 @@ int32_t tpl_saveIncludedTpls(const char *path)
 	for(i = 0; i < tpls_count; ++i)
 	{
 		const struct tpl *tpl = &tpls[i];
-		if(strlen(tpl_getTplPath(tpl->tpl_name, path, tmp, 256)) > 0 && (fp = fopen(tmp, "w")) != NULL)
+		if(cs_strlen(tpl_getTplPath(tpl->tpl_name, path, tmp, 256)) > 0 && (fp = fopen(tmp, "w")) != NULL)
 		{
 			if(strncmp(tpl->tpl_name, "IC", 2) != 0)
 			{
-				fprintf(fp, "<!--OSCam;%d;%s;%s;%s-->\n", crc32(0, (uint8_t *)tpl->tpl_data, tpl->tpl_data_len), CS_VERSION, CS_SVN_VERSION, tpl->tpl_deps);
+				fprintf(fp, "<!--OSCam;%d;%s;%s-->\n", crc32(0, (uint8_t *)tpl->tpl_data, tpl->tpl_data_len), CS_VERSION, tpl->tpl_deps);
 			}
 			fwrite(tpl->tpl_data, tpl->tpl_data_len, 1, fp);
 			fclose(fp);
@@ -611,11 +609,11 @@ void tpl_checkOneDirDiskRevisions(const char *subdir)
 	for(i = 0; i < tpls_count; ++i)
 	{
 		const struct tpl *tpl = &tpls[i];
-		if(strncmp(tpl->tpl_name, "IC", 2) != 0 && strlen(tpl_getTplPath(tpl->tpl_name, dirpath, path, 255)) > 0 && file_exists(path))
+		if(strncmp(tpl->tpl_name, "IC", 2) != 0 && cs_strlen(tpl_getTplPath(tpl->tpl_name, dirpath, path, 255)) > 0 && file_exists(path))
 		{
 			int8_t error = 1;
 			char *tplorg = tpl_getUnparsedTpl(tpl->tpl_name, 0, subdir);
-			unsigned long checksum = 0, curchecksum = crc32(0L, (unsigned char *)tpl->tpl_data, tpl->tpl_data_len);
+			unsigned long checksum = 0, curchecksum = crc32(0L, (uint8_t *)tpl->tpl_data, tpl->tpl_data_len);
 			char *ifdefs = "", *pch1 = strstr(tplorg, "<!--OSCam");
 			if(pch1 != NULL)
 			{
@@ -641,7 +639,7 @@ void tpl_checkOneDirDiskRevisions(const char *subdir)
 				else { error = 0; }
 			}
 			else { cs_log("WARNING: Your http disk template %s is in the old template format without revision info. Please consider upgrading it!", path); }
-			if(error) { cs_log("If you are sure that it is current, add the following line at the beginning of the template to suppress this warning: <!--OSCam;%lu;%s;%s;%s-->", curchecksum, CS_VERSION, CS_SVN_VERSION, ifdefs); }
+			if(error) { cs_log("If you are sure that it is current, add the following line at the beginning of the template to suppress this warning: <!--OSCam;%lu;%s;%s-->", curchecksum, CS_VERSION, ifdefs); }
 			NULLFREE(tplorg);
 		}
 	}
@@ -652,39 +650,40 @@ void tpl_checkDiskRevisions(void)
 {
 	char subdir[255];
 	char dirpath[255];
+	int n;
 	if(cfg.http_tpl)
 	{
 		tpl_checkOneDirDiskRevisions("");
-		DIR *hdir;
-		struct dirent entry;
-		struct dirent *result;
 		struct stat s;
-		if((hdir = opendir(cfg.http_tpl)) != NULL)
+		struct dirent **entries;
+		n = scandir(cfg.http_tpl, &entries, NULL, NULL);
+		if(n==-1)
+			return;
+		while(n--)
 		{
-			while(cs_readdir_r(hdir, &entry, &result) == 0 && result != NULL)
+			if(strcmp(".", entries[n]->d_name) == 0 || strcmp("..", entries[n]->d_name) == 0)
 			{
-				if(strcmp(".", entry.d_name) == 0 || strcmp("..", entry.d_name) == 0)
+				free(entries[n]);
+				continue;
+			}
+			snprintf(dirpath, 255, "%.31s%.31s", cfg.http_tpl, entries[n]->d_name);
+			if(stat(dirpath, &s) == 0)
+			{
+				if(s.st_mode & S_IFDIR)
 				{
-					continue;
-				}
-				snprintf(dirpath, 255, "%.31s%.31s", cfg.http_tpl, entry.d_name);
-				if(stat(dirpath, &s) == 0)
-				{
-					if(s.st_mode & S_IFDIR)
-					{
-						snprintf(subdir, 255,
+					snprintf(subdir, 255,
 #ifdef WIN32
-								 "%s\\"
+							 "%s\\"
 #else
-								 "%.253s/"
+							 "%.253s/"
 #endif
-								 , entry.d_name);
-						tpl_checkOneDirDiskRevisions(subdir);
-					}
+							 , entries[n]->d_name);
+					tpl_checkOneDirDiskRevisions(subdir);
 				}
 			}
-			closedir(hdir);
+			free(entries[n]);
 		}
+		free(entries);
 	}
 }
 
@@ -703,7 +702,7 @@ void urldecode(char *s)
 	int32_t c, c1, n;
 	char *t;
 	t = s;
-	n = strlen(s);
+	n = cs_strlen(s);
 	while(n > 0)
 	{
 		c = *s++;
@@ -726,13 +725,13 @@ void urldecode(char *s)
 char *urlencode(struct templatevars *vars, const char *str)
 {
 	char *buf;
-	if(!cs_malloc(&buf, strlen(str) * 3 + 1)) { return ""; }
+	if(!cs_malloc(&buf, cs_strlen(str) * 3 + 1)) { return ""; }
 	const char *pstr = str;
 	char *pbuf = buf;
-	
+
 	while(*pstr)
 	{
-		if(isalnum((uchar)*pstr) || *pstr == '-' || *pstr == '_' || *pstr == '.' || *pstr == '~') { *pbuf++ = *pstr; }
+		if(isalnum((uint8_t)*pstr) || *pstr == '-' || *pstr == '_' || *pstr == '.' || *pstr == '~') { *pbuf++ = *pstr; }
 		else if(*pstr == ' ') { *pbuf++ = '+'; }
 		else
 		{
@@ -744,23 +743,23 @@ char *urlencode(struct templatevars *vars, const char *str)
 	}
 	*pbuf = '\0';
 	/* Allocate the needed memory size and store it in the templatevars */
-	if(!cs_realloc(&buf, strlen(buf) + 1)) { return ""; }
+	if(!cs_realloc(&buf, cs_strlen(buf) + 1)) { return ""; }
 	return tpl_addTmp(vars, buf);
 }
 
 /* XML-Escapes a char array. The returned reference will be automatically cleaned through the templatevars-mechanism tpl_clear().
-   Do not call free() or realloc on the returned reference or you will get memory corruption! */
+	 Do not call free() or realloc on the returned reference or you will get memory corruption! */
 char *xml_encode(struct templatevars *vars, const char *chartoencode)
 {
 	if(!chartoencode) { return ""; }
-	int32_t i, pos = 0, len = strlen(chartoencode);
+	int32_t i, pos = 0, len = cs_strlen(chartoencode);
 	char *encoded;
 	char buffer[7];
 	/* In worst case, every character could get converted to 6 chars (we only support ASCII, for Unicode it would be 7)*/
 	if(!cs_malloc(&encoded, len * 6 + 1)) { return ""; }
 	for(i = 0; i < len; ++i)
 	{
-		unsigned char tmp = chartoencode[i];
+		uint8_t tmp = chartoencode[i];
 		switch(tmp)
 		{
 		case '&' :
@@ -780,19 +779,19 @@ char *xml_encode(struct templatevars *vars, const char *chartoencode)
 			pos += 6;
 			break;
 		case '\'':
-			memcpy(encoded + pos, "&#39;", 5);
-			pos += 5;
-			break; // &apos; not supported on older IE
+			memcpy(encoded + pos, "&apos;", 6);
+			pos += 6;
+			break;
 		case '\n':
 			memcpy(encoded + pos, "\n", 1);
 			pos += 1;
 			break;
 		default:
-			if(tmp < 32 || (cs_http_use_utf8 != 1 && tmp > 127))
+			if(tmp < 32)
 			{
 				snprintf(buffer, 7, "&#%d;", tmp);
-				memcpy(encoded + pos, buffer, strlen(buffer));
-				pos += strlen(buffer);
+				memcpy(encoded + pos, buffer, cs_strlen(buffer));
+				pos += cs_strlen(buffer);
 			}
 			else
 			{

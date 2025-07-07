@@ -1,7 +1,8 @@
 ##CALLBACK##{
 "oscam": {
-    "version": "##CS_VERSION## build r##CS_SVN_VERSION##",
-    "revision": "##CS_SVN_VERSION##",
+    "version": "##CS_VERSION##",
+    "revision": "",
+    "commit": "##CS_GIT_COMMIT##",
     "starttime": "##APISTARTTIME##",
     "apiruntime": "##APIRUNTIME##",
     "runtime": "##RUNTIME##",
@@ -82,6 +83,7 @@
 		"total_cachexhit":"##TOTAL_CACHEXHIT##",
 		"rel_cachexhit":"##REL_CACHEXHIT##",
 		"total_cachesize":"##TOTAL_CACHESIZE##",
+		"total_cachesize_lg":"##TOTAL_CACHESIZE_LG##",
 		"total_elenr":"##TOTAL_ELENR##",
 		"total_eheadr":"##TOTAL_EHEADR##",
 		"total_emmerroruk_readers":"##TOTAL_EMMERRORUK_READERS##",

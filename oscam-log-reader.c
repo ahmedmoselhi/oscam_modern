@@ -5,6 +5,7 @@
 #include "oscam-log.h"
 #include "oscam-log-reader.h"
 #include "oscam-reader.h"
+#include "oscam-string.h"
 
 extern int log_remove_sensitive;
 
@@ -12,16 +13,20 @@ static char *debug_mask_txt(int mask)
 {
 	switch(mask)
 	{
-	case D_EMM    :
-		return "EMM: ";
-	case D_IFD    :
-		return "IFD: ";
-	case D_TRACE  :
-		return "TRACE: ";
-	case D_DEVICE :
-		return "IO: ";
-	default       :
-		return "";
+		case D_EMM:
+			return "EMM: ";
+
+		case D_IFD:
+			return "IFD: ";
+
+		case D_TRACE:
+			return "TRACE: ";
+
+		case D_DEVICE:
+			return "IO: ";
+
+		default:
+			return "";
 	}
 }
 
@@ -40,7 +45,7 @@ static const char *reader_desc_txt(struct s_reader *reader)
 static char *format_sensitive(char *result, int remove_sensitive)
 {
 	// Filter sensitive information
-	int i, n = strlen(result), p = 0;
+	int i, n = cs_strlen(result), p = 0;
 	if(remove_sensitive)
 	{
 		int in_sens = 0;
@@ -48,22 +53,26 @@ static char *format_sensitive(char *result, int remove_sensitive)
 		{
 			switch(result[i])
 			{
-			case '{':
-				in_sens = 1;
-				continue;
-			case '}':
-				in_sens = 0;
-				break;
+				case '{':
+					in_sens = 1;
+					continue;
+
+				case '}':
+					in_sens = 0;
+					break;
 			}
+
 			if(in_sens)
 				{ result[i] = '#'; }
 		}
 	}
+
 	// Filter sensitive markers
 	for(i = 0; i < n; i++)
 	{
 		if(result[i] == '{' || result[i] == '}')
 			{ continue; }
+
 		result[p++] = result[i];
 	}
 	result[p] = '\0';

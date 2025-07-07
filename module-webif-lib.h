@@ -4,7 +4,12 @@
 #ifdef WITH_SSL
 #include <openssl/crypto.h>
 #include <openssl/ssl.h>
+#include <openssl/x509v3.h>
 #include <openssl/err.h>
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+#define X509_getm_notBefore X509_get_notBefore
+#define X509_getm_notAfter X509_get_notAfter
+#endif
 #endif
 
 #include "cscrypt/md5.h"
@@ -24,11 +29,11 @@
 /* The amount of hash buckets (based on opaque string) for better performance. */
 #define AUTHNONCEHASHBUCKETS 4
 /* The maximum amount of GET parameters the webserver will parse. */
-#define MAXGETPARAMS 100
+#define MAXGETPARAMS 300
 /* The refresh delay (in seconds) when stopping OSCam via http. */
 #define SHUTDOWNREFRESH 30
-
-#define TOUCH_SUBDIR "touch/"
+/* The expiry of the certificate; 365 days */
+#define CERT_EXPIRY_TIME (60*60*24*365)
 
 struct s_connection
 {
@@ -56,33 +61,34 @@ struct s_nonce
 	struct s_nonce *next;
 };
 
-//should be filled with informations for stats block
-struct pstat {
-	uint32_t info_procs; // running procs
-	int64_t utime_ticks;
-	int64_t cutime_ticks;
-	int64_t stime_ticks;
-	int64_t cstime_ticks;
-	int64_t cpu_total_time;
-	uint64_t vsize; // virtual memory size in bytes
-	uint64_t rss; //Resident  Set  Size in bytes
-	uint64_t mem_total;  // Total Memory in bytes
-	uint64_t mem_free; // Free Memory in bytes
-	uint64_t mem_used; // Used Memory in bytes
-	uint64_t mem_buff; // Buffered Memory in bytes
-	uint64_t mem_cached; // Cached Memory in bytes
-	uint64_t mem_freem; // Buffered Memory in bytes
-	uint64_t mem_share; // Shared Memory in bytes
-	uint64_t mem_total_swap; // Total Swap Memory in bytes
-	uint64_t mem_free_swap; // Free Swap Memory in bytes
-	uint64_t mem_used_swap; // Used Swap Memory in bytes
-	float cpu_avg[3]; //CPU load from "load average"
-	struct timeb time_started; //needed for calculating time between function call
-	int64_t gone_refresh; //time difference between CPU usage calculations in sec
-	double cpu_usage_user; //user_CPU usage to display in %
-	double cpu_usage_sys; //sys_CPU usage to display in %
-	uint16_t check_available; //default is 0, if value x is not available,
-	//set corresponding bit to 1 -->module-webif.c / set_status_info()
+// should be filled with informations for stats block
+struct pstat
+{
+	uint32_t     info_procs;           // running procs
+	int64_t      utime_ticks;
+	int64_t      cutime_ticks;
+	int64_t      stime_ticks;
+	int64_t      cstime_ticks;
+	int64_t      cpu_total_time;
+	uint64_t     vsize;                // virtual memory size in bytes
+	uint64_t     rss;                  // Resident Set Size in bytes
+	uint64_t     mem_total;            // Total Memory in bytes
+	uint64_t     mem_free;             // Free Memory in bytes
+	uint64_t     mem_used;             // Used Memory in bytes
+	uint64_t     mem_buff;             // Buffered Memory in bytes
+	uint64_t      mem_cached;          // Cached Memory in bytes
+	uint64_t     mem_freem;            // Buffered Memory in bytes
+	uint64_t     mem_share;            // Shared Memory in bytes
+	uint64_t     mem_total_swap;       // Total Swap Memory in bytes
+	uint64_t     mem_free_swap;        // Free Swap Memory in bytes
+	uint64_t     mem_used_swap;        // Used Swap Memory in bytes
+	float        cpu_avg[3];           // CPU load from "load average"
+	struct timeb time_started;         // needed for calculating time between function call
+	int64_t      gone_refresh;         // time difference between CPU usage calculations in sec
+	double       cpu_usage_user;       // user_CPU usage to display in %
+	double       cpu_usage_sys;        // sys_CPU usage to display in %
+	uint16_t     check_available;      // default is 0, if value x is not available,
+	// set corresponding bit to 1 --> module-webif.c / set_status_info()
 };
 
 extern time_t parse_modifiedsince(char *value);

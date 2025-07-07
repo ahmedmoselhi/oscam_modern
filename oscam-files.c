@@ -13,23 +13,37 @@ extern char cs_tmpdir[200];
 char *get_tmp_dir(void)
 {
 	if(cs_tmpdir[0])
-		{ return cs_tmpdir; }
+	{
+		return cs_tmpdir;
+	}
 #if defined(__CYGWIN__)
+
 	char *d = getenv("TMPDIR");
+
 	if(!d || !d[0])
-		{ d = getenv("TMP"); }
+	{
+		d = getenv("TMP");
+	}
+
 	if(!d || !d[0])
-		{ d = getenv("TEMP"); }
+	{
+		d = getenv("TEMP");
+	}
+
 	if(!d || !d[0])
-		{ getcwd(cs_tmpdir, sizeof(cs_tmpdir) - 1); }
+	{
+		getcwd(cs_tmpdir, sizeof(cs_tmpdir) - 1);
+	}
 
 	cs_strncpy(cs_tmpdir, d, sizeof(cs_tmpdir));
 	char *p = cs_tmpdir;
 	while(*p) { p++; }
 	p--;
 	if(*p != '/' && *p != '\\')
-		{ strcat(cs_tmpdir, "/"); }
-	strcat(cs_tmpdir, "_oscam");
+	{
+		cs_strncat(cs_tmpdir, "/", sizeof(cs_tmpdir));
+	}
+	cs_strncat(cs_tmpdir, "_oscam", sizeof(cs_tmpdir));
 #else
 	cs_strncpy(cs_tmpdir, "/tmp/.oscam", sizeof(cs_tmpdir));
 #endif
@@ -41,30 +55,12 @@ char *get_tmp_dir_filename(char *dest, size_t destlen, const char *filename)
 {
 	char *tmp_dir = get_tmp_dir();
 	const char *slash = "/";
-	if(tmp_dir[strlen(tmp_dir) - 1] == '/') { slash = ""; }
+	if(tmp_dir[cs_strlen(tmp_dir) - 1] == '/')
+	{
+		slash = "";
+	}
 	snprintf(dest, destlen, "%s%s%s", tmp_dir, slash, filename);
 	return dest;
-}
-
-/* Drop-in replacement for readdir_r as some plattforms strip the function from their libc.
-   Furthermore, there are some security issues, see http://womble.decadent.org.uk/readdir_r-advisory.html */
-int32_t cs_readdir_r(DIR *dirp, struct dirent *entry, struct dirent **result)
-{
-	/* According to POSIX the buffer readdir uses is not shared between directory streams.
-	   However readdir is not guaranteed to be thread-safe and some implementations may use global state.
-	   Thus we use a lock as we have many plattforms... */
-	int32_t rc;
-	cs_writelock(__func__, &readdir_lock);
-	errno = 0;
-	*result = readdir(dirp);
-	rc = errno;
-	if(errno == 0 && *result != NULL)
-	{
-		memcpy(entry, *result, sizeof(struct dirent));
-		*result = entry;
-	}
-	cs_writeunlock(__func__, &readdir_lock);
-	return rc;
 }
 
 /* Return 1 if the file exists, else 0 */
@@ -73,17 +69,21 @@ bool file_exists(const char *filename)
 	return access(filename, R_OK) == 0;
 }
 
-/* Copies a file from srcfile to destfile. If an error occured before writing, -1 is returned, else -2. On success, 0 is returned.*/
+/* Copies a file from srcfile to destfile. If an error occured before writing,
+   -1 is returned, else -2. On success, 0 is returned.*/
+
 int32_t file_copy(char *srcfile, char *destfile)
 {
 	FILE *src, *dest;
 	int32_t ch;
+
 	src = fopen(srcfile, "r");
 	if(!src)
 	{
 		cs_log("Error opening file %s for reading (errno=%d %s)!", srcfile, errno, strerror(errno));
 		return -1;
 	}
+
 	dest = fopen(destfile, "w");
 	if(!dest)
 	{
@@ -91,6 +91,7 @@ int32_t file_copy(char *srcfile, char *destfile)
 		fclose(src);
 		return -1;
 	}
+
 	while(1)
 	{
 		ch = fgetc(src);
@@ -115,7 +116,9 @@ int32_t file_copy(char *srcfile, char *destfile)
 	return (0);
 }
 
-/* Overwrites destfile with temp_file. If forceBakOverWrite = 0, the bakfile will not be overwritten if it exists, else it will be.*/
+/* Overwrites destfile with temp_file. If forceBakOverWrite = 0,
+   the bakfile will not be overwritten if it exists, else it will be.*/
+
 int32_t safe_overwrite_with_bak(char *destfile, char *temp_file, char *bakfile, int32_t forceBakOverWrite)
 {
 	int32_t rc;
@@ -127,23 +130,33 @@ int32_t safe_overwrite_with_bak(char *destfile, char *temp_file, char *bakfile, 
 			{
 				cs_log("Error copying original config file %s to %s. The original config will be left untouched!", destfile, bakfile);
 				if(unlink(temp_file) < 0)
-					{ cs_log("Error removing temp config file %s (errno=%d %s)!", temp_file, errno, strerror(errno)); }
+				{
+					cs_log("Error removing temp config file %s (errno=%d %s)!", temp_file, errno, strerror(errno));
+				}
 				return 1;
 			}
 		}
 	}
+
 	rc = file_copy(temp_file, destfile);
 	if(rc < 0)
 	{
 		cs_log("An error occured while writing the new config file %s.", destfile);
 		if(rc == -2)
-			{ cs_log("The config will be missing or only partly filled upon next startup as this is a non-recoverable error! Please restore from backup or try again."); }
+		{
+			cs_log("The config will be missing or only partly filled upon next startup as this is a non-recoverable error! Please restore from backup or try again.");
+		}
 		if(unlink(temp_file) < 0)
-			{ cs_log("Error removing temp config file %s (errno=%d %s)!", temp_file, errno, strerror(errno)); }
+		{
+			cs_log("Error removing temp config file %s (errno=%d %s)!", temp_file, errno, strerror(errno));
+		}
 		return 1;
 	}
+
 	if(unlink(temp_file) < 0)
-		{ cs_log("Error removing temp config file %s (errno=%d %s)!", temp_file, errno, strerror(errno)); }
+	{
+		cs_log("Error removing temp config file %s (errno=%d %s)!", temp_file, errno, strerror(errno));
+	}
 	return 0;
 }
 
@@ -152,14 +165,18 @@ char *get_gbox_filename(char *dest, size_t destlen, const char *filename)
 {
 	char *tmp_dir = get_tmp_dir();
 	const char *slash = "/";
+
 	if(cfg.gbox_tmp_dir != NULL)
 	{
-		if(cfg.gbox_tmp_dir[strlen(cfg.gbox_tmp_dir) - 1] == '/') { slash = ""; }
-		snprintf(dest, destlen, "%s%s%s", cfg.gbox_tmp_dir, slash, filename);	
+		if(cfg.gbox_tmp_dir[cs_strlen(cfg.gbox_tmp_dir) - 1] == '/')
+		{
+			slash = "";
+		}
+		snprintf(dest, destlen, "%s%s%s", cfg.gbox_tmp_dir, slash, filename);
 	}
 	else
 	{
-		if(tmp_dir[strlen(tmp_dir) - 1] == '/') { slash = ""; }
+		if(tmp_dir[cs_strlen(tmp_dir) - 1] == '/') { slash = ""; }
 		snprintf(dest, destlen, "%s%s%s", tmp_dir, slash, filename);
 	}
 	return dest;

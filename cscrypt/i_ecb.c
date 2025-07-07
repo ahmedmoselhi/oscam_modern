@@ -62,15 +62,19 @@
 const char *idea_options(void)
 {
 	if(sizeof(short) != sizeof(IDEA_INT))
-		{ return ("idea(int)"); }
+	{
+		return ("idea(int)");
+	}
 	else
-		{ return ("idea(short)"); }
+	{
+		return ("idea(short)");
+	}
 }
 
 void idea_ecb_encrypt(const unsigned char *in, unsigned char *out,
 					  IDEA_KEY_SCHEDULE *ks)
 {
-	unsigned long l0, l1, d[2];
+	unsigned long l0 = 0, l1 = 0, d[2];
 
 	n2l(in, l0);
 	d[0] = l0;
@@ -81,5 +85,5 @@ void idea_ecb_encrypt(const unsigned char *in, unsigned char *out,
 	l2n(l0, out);
 	l1 = d[1];
 	l2n(l1, out);
-	l0 = l1 = d[0] = d[1] = 0;
+	d[0] = d[1] = 0;
 }

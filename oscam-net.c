@@ -74,13 +74,20 @@ void cs_inet_addr(char *txt, IN_ADDR_T *out)
 void cs_resolve(const char *hostname, IN_ADDR_T *ip, struct SOCKADDR *sock, socklen_t *sa_len)
 {
 #ifdef IPV6SUPPORT
-	cs_getIPv6fromHost(hostname, ip, sock, sa_len);
+	cs_getIPv6fromHost(hostname, ip, sock, sa_len, 0);
 #else
 	*ip = cs_getIPfromHost(hostname);
 	if(sa_len)
 		{ *sa_len = sizeof(*sock); }
 #endif
 }
+
+#ifdef IPV6SUPPORT
+void cs_resolve_v4(const char *hostname, IN_ADDR_T *ip, struct SOCKADDR *sock, socklen_t *sa_len)
+{
+	cs_getIPv6fromHost(hostname, ip, sock, sa_len, 1);
+}
+#endif
 
 #ifdef IPV6SUPPORT
 int32_t cs_in6addr_equal(struct in6_addr *a1, struct in6_addr *a2)
@@ -95,7 +102,7 @@ int32_t cs_in6addr_lt(struct in6_addr *a, struct in6_addr *b)
 	{
 		if((i == 2) && ((IN6_IS_ADDR_V4COMPAT(a) && IN6_IS_ADDR_V4MAPPED(b)) ||
 						(IN6_IS_ADDR_V4COMPAT(b) && IN6_IS_ADDR_V4MAPPED(a))))
-			{ continue; }   //skip comparing this part
+			{ continue; } // skip comparing this part
 
 		if(a->s6_addr32[i] != b->s6_addr32[i])
 			{ return ntohl(a->s6_addr32[i]) < ntohl(b->s6_addr32[i]); }
@@ -175,11 +182,11 @@ int32_t check_ip(struct s_ip *ip, IN_ADDR_T n)
 }
 
 /* Returns the ip from the given hostname. If gethostbyname is configured in the config file, a lock
-   will be held until the ip has been resolved. */
+	will be held until the ip has been resolved. */
 uint32_t cs_getIPfromHost(const char *hostname)
 {
 	uint32_t result = 0;
-	//Resolve with gethostbyname:
+	// Resolve with gethostbyname:
 	if(cfg.resolve_gethostbyname)
 	{
 		cs_writelock(__func__, &gethostbyname_lock);
@@ -190,7 +197,7 @@ uint32_t cs_getIPfromHost(const char *hostname)
 			{ result = ((struct in_addr *)rht->h_addr)->s_addr; }
 		cs_writeunlock(__func__, &gethostbyname_lock);
 	}
-	else     //Resolve with getaddrinfo:
+	else // Resolve with getaddrinfo:
 	{
 		struct addrinfo hints, *res = NULL;
 		memset(&hints, 0, sizeof(hints));
@@ -213,13 +220,23 @@ uint32_t cs_getIPfromHost(const char *hostname)
 }
 
 #ifdef IPV6SUPPORT
-void cs_getIPv6fromHost(const char *hostname, struct in6_addr *addr, struct sockaddr_storage *sa, socklen_t *sa_len)
+void cs_getIPv6fromHost(const char *hostname, struct in6_addr *addr, struct sockaddr_storage *sa, socklen_t *sa_len, uint8_t forceV4)
 {
 	uint32_t ipv4addr = 0;
+	uint8_t ipv6_found = 0;
 	struct addrinfo hints, *res = NULL;
 	memset(&hints, 0, sizeof(hints));
 	hints.ai_socktype = SOCK_STREAM;
-	hints.ai_family = AF_UNSPEC;
+
+	if (forceV4)
+	{
+		hints.ai_family = AF_INET;
+	}
+	else
+	{
+		hints.ai_family = AF_UNSPEC;
+	}
+
 	hints.ai_protocol = IPPROTO_TCP;
 	int32_t err = getaddrinfo(hostname, NULL, &hints, &res);
 	if(err != 0 || !res || !res->ai_addr)
@@ -228,16 +245,32 @@ void cs_getIPv6fromHost(const char *hostname, struct in6_addr *addr, struct sock
 	}
 	else
 	{
-		ipv4addr = ((struct sockaddr_in *)(res->ai_addr))->sin_addr.s_addr;
-		if(res->ai_family == AF_INET)
-			{ cs_in6addr_ipv4map(addr, ipv4addr); }
-		else
-			{ IP_ASSIGN(*addr, SIN_GET_ADDR(*res->ai_addr)); }
-		if(sa)
-			{ memcpy(sa, res->ai_addr, res->ai_addrlen); }
-		if(sa_len)
-			{ *sa_len = res->ai_addrlen; }
+		while (res)
+		{
+			if ((!forceV4 && !ipv6_found) || (forceV4))
+			{
+				ipv4addr = ((struct sockaddr_in *)(res->ai_addr))->sin_addr.s_addr;
+				if(res->ai_family == AF_INET)
+					{ cs_in6addr_ipv4map(addr, ipv4addr); }
+				else
+				{
+					IP_ASSIGN(*addr, SIN_GET_ADDR(*res->ai_addr));
+					ipv6_found = 1;
+				}
+				if(sa)
+					{ memcpy(sa, res->ai_addr, res->ai_addrlen); }
+				if(sa_len)
+					{ *sa_len = res->ai_addrlen; }
+
+				res = res->ai_next;
+			}
+			else
+			{
+				res = res->ai_next;
+			}
+		}
 	}
+
 	if(res)
 		{ freeaddrinfo(res); }
 }
@@ -246,117 +279,162 @@ void cs_getIPv6fromHost(const char *hostname, struct in6_addr *addr, struct sock
 int set_socket_priority(int fd, int priority)
 {
 #if defined(IP_TOS) || defined(SO_PRIORITY)
-	if (priority == 0) { return -1; }	// default value, therefore leave it untouched (IPP=0; DSCP=CS0)
-	
+	if (priority == 0) { return -1; } // default value, therefore leave it untouched (IPP=0; DSCP=CS0)
+
 	int ret = 0;
 	int cos __attribute__ ((unused)) = 0;
 	int tos __attribute__ ((unused)) = 0x00;
 
-	switch (priority) {
-		case 1:		// IPP=1; DSCP=CS1
+	switch(priority)
+	{
+		case 1: // IPP=1; DSCP=CS1
 			cos = 1;
 			tos = 0x20;
 			break;
-		case 2:		// IPP=1; DSCP=AF11
+
+		case 2: // IPP=1; DSCP=AF11
 			cos = 1;
 			tos = 0x28;
 			break;
-		case 3:		// IPP=1; DSCP=AF12
+
+		case 3: // IPP=1; DSCP=AF12
 			cos = 1;
 			tos = 0x30;
 			break;
-		case 4:		// IPP=1; DSCP=AF13
+
+		case 4: // IPP=1; DSCP=AF13
 			cos = 1;
 			tos = 0x38;
 			break;
-		case 5:		// IPP=2; DSCP=CS2
+
+		case 5: // IPP=2; DSCP=CS2
 			cos = 2;
 			tos = 0x40;
 			break;
-		case 6:		// IPP=2; DSCP=AF21
+
+		case 6: // IPP=2; DSCP=AF21
 			cos = 2;
 			tos = 0x48;
 			break;
-		case 7:		// IPP=2; DSCP=AF22
+
+		case 7: // IPP=2; DSCP=AF22
 			cos = 2;
 			tos = 0x50;
 			break;
-		case 8:		// IPP=2; DSCP=AF23
+
+		case 8: // IPP=2; DSCP=AF23
 			cos = 2;
 			tos = 0x58;
 			break;
-		case 9:		// IPP=3; DSCP=CS3
+
+		case 9: // IPP=3; DSCP=CS3
 			cos = 3;
 			tos = 0x60;
 			break;
-		case 10:	// IPP=3; DSCP=AF31
+
+		case 10: // IPP=3; DSCP=AF31
 			cos = 3;
 			tos = 0x68;
 			break;
-		case 11:	// IPP=3; DSCP=AF32
+
+		case 11: // IPP=3; DSCP=AF32
 			cos = 3;
 			tos = 0x70;
 			break;
-		case 12:	// IPP=3; DSCP=AF33
+
+		case 12: // IPP=3; DSCP=AF33
 			cos = 3;
 			tos = 0x78;
 			break;
-		case 13:	// IPP=4; DSCP=CS4
+
+		case 13: // IPP=4; DSCP=CS4
 			cos = 4;
 			tos = 0x80;
 			break;
-		case 14:	// IPP=4; DSCP=AF41
+
+		case 14: // IPP=4; DSCP=AF41
 			cos = 4;
 			tos = 0x88;
 			break;
-		case 15:	// IPP=4; DSCP=AF42
+
+		case 15: // IPP=4; DSCP=AF42
 			cos = 4;
 			tos = 0x90;
 			break;
-		case 16:	// IPP=4; DSCP=AF43
+
+		case 16: // IPP=4; DSCP=AF43
 			cos = 4;
 			tos = 0x98;
 			break;
-		case 17:	// IPP=5; DSCP=CS5
+
+		case 17: // IPP=5; DSCP=CS5
 			cos = 5;
 			tos = 0xa0;
 			break;
-		case 18:	// IPP=5; DSCP=EF
+
+		case 18: // IPP=5; DSCP=EF
 			cos = 5;
 			tos = 0xb8;
 			break;
-		case 19:	// IPP=6; DSCP=CS6
+
+		case 19: // IPP=6; DSCP=CS6
 			cos = 6;
 			tos = 0xc0;
 			break;
-		case 20:	// IPP=7; DSCP=CS7
+
+		case 20: // IPP=7; DSCP=CS7
 			cos = 7;
 			tos = 0xe0;
 			break;
 	}
 
-# ifdef IP_TOS
-	if (setsockopt(fd, IPPROTO_IP, IP_TOS, (void *)&tos, sizeof(tos)) < 0) {
+#ifdef IP_TOS
+	if (setsockopt(fd, IPPROTO_IP, IP_TOS, (void *)&tos, sizeof(tos)) < 0)
+	{
 		cs_log("Setting IP_TOS failed, errno=%d, %s", errno, strerror(errno));
-	} else {
+	}
+	else
+	{
 		ret = ret ^ 0x01;
 	}
-#  if  defined(IPV6SUPPORT) && defined(IPV6_TCLASS)
-	if (setsockopt(fd, IPPROTO_IPV6, IPV6_TCLASS, (void *)&tos, sizeof(tos)) < 0) {
-		cs_log("Setting IPV6_TCLASS failed, errno=%d, %s", errno, strerror(errno));
-	} else {
-		ret = ret ^ 0x02;
-	}
-#  endif
-# endif
 
-# ifdef SO_PRIORITY
-	if (setsockopt(fd, SOL_SOCKET, SO_PRIORITY, (void *)&cos, sizeof(cos)) < 0) {
+#if defined(IPV6SUPPORT) && defined(IPV6_TCLASS)
+	int32_t family = 0;
+	socklen_t length = sizeof(int);
+#ifndef SO_DOMAIN
+#define SO_DOMAIN 39
+#endif
+	if (getsockopt(fd, SOL_SOCKET, SO_DOMAIN, &family, &length) <0)
+	{
+		cs_log("getsockopt err - set_socket_priority()");
+	}
+	else
+	{
+		if (family == AF_INET6)
+		{
+			if (setsockopt(fd, IPPROTO_IPV6, IPV6_TCLASS, (void *)&tos, sizeof(tos)) < 0)
+			{
+				cs_log("Setting IPV6_TCLASS failed, errno=%d, %s", errno, strerror(errno));
+			}
+			else
+			{
+				ret = ret ^ 0x02;
+			}
+		}
+	}
+#endif
+#endif
+
+#ifdef SO_PRIORITY
+	if (setsockopt(fd, SOL_SOCKET, SO_PRIORITY, (void *)&cos, sizeof(cos)) < 0)
+	{
 		cs_log("Setting SO_PRIORITY failed, errno=%d, %s", errno, strerror(errno));
-	} else {
+	}
+	else
+	{
 		ret = ret ^ 0x04;
 	}
-# endif
+#endif
 
 	return ret;
 #else
@@ -374,41 +452,52 @@ void setTCPTimeouts(int32_t sock)
 	{
 		cs_log("Setting SO_KEEPALIVE failed, errno=%d, %s", errno, strerror(errno));
 	}
+
 #if defined(TCP_KEEPIDLE) && defined(TCP_KEEPCNT) && defined(TCP_KEEPINTVL)
 	flag = 10;
-	if(setsockopt(sock, IPPROTO_TCP, TCP_KEEPIDLE, &flag, sizeof(flag)) && errno != EBADF)  //send first keepalive packet after 10 seconds of last package received (keepalive packets included)
+
+	if(setsockopt(sock, IPPROTO_TCP, TCP_KEEPIDLE, &flag, sizeof(flag)) && errno != EBADF) // send first keepalive packet after 10 seconds of last package received (keepalive packets included)
 	{
 		cs_log("Setting TCP_KEEPIDLE failed, errno=%d, %s", errno, strerror(errno));
 	}
+
 	flag = 3;
-	if(setsockopt(sock, IPPROTO_TCP, TCP_KEEPCNT, &flag, sizeof(flag)) && errno != EBADF)       //send up to 3 keepalive packets out (in interval TCP_KEEPINTVL), then disconnect if no response
+
+	if(setsockopt(sock, IPPROTO_TCP, TCP_KEEPCNT, &flag, sizeof(flag)) && errno != EBADF) // send up to 3 keepalive packets out (in interval TCP_KEEPINTVL), then disconnect if no response
 	{
 		cs_log("Setting TCP_KEEPCNT failed, errno=%d, %s", errno, strerror(errno));
 	}
+
 	flag = 1;
+
 	if(setsockopt(sock, IPPROTO_TCP, TCP_KEEPINTVL, &flag, sizeof(flag)) && errno != EBADF)
 	{
-		;       //send a keepalive packet out every second (until answer has been received or TCP_KEEPCNT has been reached)
+		; // send a keepalive packet out every second (until answer has been received or TCP_KEEPCNT has been reached)
 		cs_log("Setting TCP_KEEPINTVL failed, errno=%d, %s", errno, strerror(errno));
 	}
 #endif
+
 	struct timeval tv;
 	tv.tv_sec = 60;
 	tv.tv_usec = 0;
+
 	if(setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(struct timeval)) && errno != EBADF)
 	{
 		;
 		cs_log("Setting SO_SNDTIMEO failed, errno=%d, %s", errno, strerror(errno));
 	}
+
 	tv.tv_sec = 600;
 	tv.tv_usec = 0;
+
 	if(setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(struct timeval)) && errno != EBADF)
 	{
 		;
 		cs_log("Setting SO_RCVTIMEO failed, errno=%d, %s", errno, strerror(errno));
 	}
+
 #if defined(TCP_USER_TIMEOUT)
-	int timeout = 60000;  // RFC 5482 user timeout in milliseconds
+	int timeout = 60000; // RFC 5482 user timeout in milliseconds
 	setsockopt(sock, SOL_TCP, TCP_USER_TIMEOUT, (char *) &timeout, sizeof(timeout));
 #endif
 }
@@ -495,8 +584,8 @@ int32_t process_input(uint8_t *buf, int32_t buflen, int32_t timeout)
 			else
 				{ return 0; }
 		}
-		
-		if((p_rc == 0) && (timeout != 0) && (gone >= timeoutms))  // client maxidle reached? timeout = 0, idle disconnect disabled
+
+		if((p_rc == 0) && (timeout != 0) && (gone >= timeoutms)) // client maxidle reached? timeout = 0, idle disconnect disabled
 		{
 			rc = -9;
 			break;
@@ -504,10 +593,11 @@ int32_t process_input(uint8_t *buf, int32_t buflen, int32_t timeout)
 
 		for(i = 0; i < pfdcount && p_rc > 0; i++)
 		{
-			if(pfd[i].revents & POLLHUP)   // POLLHUP is only valid in revents so it doesn't need to be set above in events
+			if(pfd[i].revents & POLLHUP) // POLLHUP is only valid in revents so it doesn't need to be set above in events
 			{
 				return 0;
 			}
+
 			if(!(pfd[i].revents & (POLLIN | POLLPRI)))
 				{ continue; }
 
@@ -523,9 +613,7 @@ static struct s_client *find_client_by_ip(IN_ADDR_T ip, in_port_t port)
 	struct s_client *cl;
 	for(cl = first_client; cl; cl = cl->next)
 	{
-		if(!cl->kill &&
-				IP_EQUAL(cl->ip, ip) && cl->port == port &&
-				(cl->typ == 'c' || cl->typ == 'm'))
+		if(!cl->kill && IP_EQUAL(cl->ip, ip) && cl->port == port && (cl->typ == 'c' || cl->typ == 'm'))
 		{
 			return cl;
 		}
@@ -541,11 +629,13 @@ int32_t accept_connection(struct s_module *module, int8_t module_idx, int8_t por
 	struct s_port *port = &module->ptab.ports[port_idx];
 
 	memset(&cad, 0, sizeof(struct SOCKADDR));
+
 	if(module->type == MOD_CONN_UDP)
 	{
-		uchar *buf;
+		uint8_t *buf;
 		if(!cs_malloc(&buf, 1024))
 			{ return -1; }
+
 		if((n = recvfrom(port->fd, buf + 3, 1024 - 3, 0, (struct sockaddr *)&cad, (socklen_t *)&scad)) > 0)
 		{
 			uint16_t rl;
@@ -561,9 +651,9 @@ int32_t accept_connection(struct s_module *module, int8_t module_idx, int8_t por
 			}
 
 			cs_log_dbg(D_TRACE, "got %d bytes on port %d from ip %s:%d client %s",
-						  n, port->s_port,
-						  cs_inet_ntoa(SIN_GET_ADDR(cad)), SIN_GET_PORT(cad),
-						  username(cl));
+							n, port->s_port,
+							cs_inet_ntoa(SIN_GET_ADDR(cad)), SIN_GET_PORT(cad),
+							username(cl));
 
 			if(!cl)
 			{
@@ -586,7 +676,7 @@ int32_t accept_connection(struct s_module *module, int8_t module_idx, int8_t por
 		else
 			{ NULLFREE(buf); }
 	}
-	else     //TCP
+	else // TCP
 	{
 		int32_t pfd3;
 		if((pfd3 = accept(port->fd, (struct sockaddr *)&cad, (socklen_t *)&scad)) > 0)
@@ -656,8 +746,10 @@ int32_t start_listener(struct s_module *module, struct s_port *port)
 #else
 	sad.sin_family = AF_INET;
 	sad_len = sizeof(struct sockaddr);
+
 	if(!module->s_ip)
 		{ module->s_ip = cfg.srvip; }
+
 	if(module->s_ip)
 	{
 		sad.sin_addr.s_addr = module->s_ip;
@@ -668,10 +760,11 @@ int32_t start_listener(struct s_module *module, struct s_port *port)
 		sad.sin_addr.s_addr = INADDR_ANY;
 	}
 #endif
+
 	timeout = cfg.bindwait;
 	port->fd = 0;
 
-	if(port->s_port > 0)    // test for illegal value
+	if(port->s_port > 0) // test for illegal value
 	{
 		SIN_GET_PORT(sad) = htons((uint16_t)port->s_port);
 	}
@@ -681,34 +774,38 @@ int32_t start_listener(struct s_module *module, struct s_port *port)
 		return 0;
 	}
 
-	int s_type  = (is_udp ? SOCK_DGRAM : SOCK_STREAM);
+	int s_type = (is_udp ? SOCK_DGRAM : SOCK_STREAM);
 	int s_proto = (is_udp ? IPPROTO_UDP : IPPROTO_TCP);
 
 	if((port->fd = socket(DEFAULT_AF, s_type, s_proto)) < 0)
 	{
-		cs_log("%s: Cannot create socket (errno=%d: %s)", module->desc, errno, strerror(errno));
+		cs_log("%s: Cannot create IPv6 socket (errno=%d: %s)", module->desc, errno, strerror(errno));
 #ifdef IPV6SUPPORT
+		SIN_GET_FAMILY(sad) = AF_INET;
+		sad_len = sizeof(struct sockaddr_in);
 		cs_log("%s: Trying fallback to IPv4", module->desc);
 		if((port->fd = socket(AF_INET, s_type, s_proto)) < 0)
 		{
-			cs_log("%s: Cannot create socket (errno=%d: %s)", module->desc, errno, strerror(errno));
+			cs_log("%s: Cannot create IPv4 socket (errno=%d: %s)", module->desc, errno, strerror(errno));
 			return 0;
 		}
 #else
 		return 0;
 #endif
 	}
-
 #ifdef IPV6SUPPORT
 	// azbox toolchain do not have this define
 #ifndef IPV6_V6ONLY
 #define IPV6_V6ONLY 26
 #endif
-	// set the server socket option to listen on IPv4 and IPv6 simultaneously
-	int val = 0;
-	if(setsockopt(port->fd, IPPROTO_IPV6, IPV6_V6ONLY, (void *)&val, sizeof(val)) < 0)
+	else
 	{
-		cs_log("%s: setsockopt(IPV6_V6ONLY) failed (errno=%d: %s)", module->desc, errno, strerror(errno));
+		// set the server socket option to listen on IPv4 and IPv6 simultaneously
+		int val = 0;
+		if(setsockopt(port->fd, IPPROTO_IPV6, IPV6_V6ONLY, (void *)&val, sizeof(val)) < 0)
+		{
+			cs_log("%s: setsockopt(IPV6_V6ONLY) failed (errno=%d: %s)", module->desc, errno, strerror(errno));
+		}
 	}
 #endif
 
@@ -741,7 +838,7 @@ int32_t start_listener(struct s_module *module, struct s_port *port)
 			if(timeout)
 			{
 				cs_log("%s: Bind request failed (%s), waiting another %d seconds",
-					   module->desc, strerror(errno), timeout);
+						module->desc, strerror(errno), timeout);
 				cs_sleepms(1000);
 			}
 			else
@@ -769,10 +866,7 @@ int32_t start_listener(struct s_module *module, struct s_port *port)
 		}
 	}
 
-	cs_log("%s: initialized (fd=%d, port=%d%s%s)",
-		   module->desc, port->fd,
-		   port->s_port,
-		   ptxt[0], ptxt[1]);
+	cs_log("%s: initialized (fd=%d, port=%d%s%s)", module->desc, port->fd, port->s_port, ptxt[0], ptxt[1]);
 
 	for(i = 0; port->ncd && i < port->ncd->ncd_ftab.nfilts; i++)
 	{
@@ -798,35 +892,35 @@ int32_t start_listener(struct s_module *module, struct s_port *port)
  */
 ssize_t cygwin_recv(int sock, void *buf, int count, int tflags)
 {
-    char *bp = buf;
-    int n = 0;
+		char *bp = buf;
+		int n = 0;
 
-    if ((n = recv(sock, bp, count, tflags)) < 0)
-    {
-    	return(n);
-    }
-
-    if (n < count && (tflags & MSG_WAITALL))
-    {
-    	cs_log_dbg(D_TRACE, "Cygwin socket read retry. Got %d expected %d", n, count);
-
-    	int n2 = recv(sock, bp + n, count - n, tflags);
-		if (n2 < 0 || n + n2 != count)
+		if ((n = recv(sock, bp, count, tflags)) < 0)
 		{
-			cs_log_dbg(D_TRACE, "Cygwin socket read retry failed. Got %d", n2);
-			if (n2 < 0)
+			return(n);
+		}
+
+		if (n < count && (tflags & MSG_WAITALL))
+		{
+			cs_log_dbg(D_TRACE, "Cygwin socket read retry. Got %d expected %d", n, count);
+
+			int n2 = recv(sock, bp + n, count - n, tflags);
+			if (n2 < 0 || n + n2 != count)
 			{
-				return(n2);
+				cs_log_dbg(D_TRACE, "Cygwin socket read retry failed. Got %d", n2);
+				if (n2 < 0)
+				{
+					return(n2);
+				}
 			}
-		}
-		else
-		{
-			cs_log_dbg(D_TRACE, "Cygwin socket read retry success. Got %d - Total: %d", n2, n + n2);
+			else
+			{
+				cs_log_dbg(D_TRACE, "Cygwin socket read retry success. Got %d - Total: %d", n2, n + n2);
+			}
+
+			n+= n2;
 		}
 
-		n+= n2;
-    }
-
-    return n;
+		return n;
 }
 #endif /* __CYGWIN__ */

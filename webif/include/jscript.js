@@ -1,4 +1,3 @@
-
 var oReloadTimer = null;
 var oCounterTimer = null;
 
@@ -29,10 +28,6 @@ function initDoc() {
 	oCounterTimer = window.setInterval("runReloadCounter();", 1000);
 };
 
-function gotosite(Action) {
-	window.location.href = Action;
-}
-
 /* Function for add new reader/user in readers.html/userconfig.html */
 function addinsert() {
 	cdpause();
@@ -57,16 +52,16 @@ function cleaninsert(deleteinsert) {
 	for (i = 0; i < tmp_array.length; i++) {
 		if (tmp_array[i] != deleteinsert){
 			existing_inserts[i2] = tmp_array[i];
-			i2++; 
+			i2++;
 		}
 	}
 }
 
 var beep = (function () {
-	var contextClass = (window.AudioContext || 
-						window.webkitAudioContext || 
-						window.mozAudioContext || 
-						window.oAudioContext || 
+	var contextClass = (window.AudioContext ||
+						window.webkitAudioContext ||
+						window.mozAudioContext ||
+						window.oAudioContext ||
 						window.msAudioContext);
 	if (contextClass) {
 		var ctx = new contextClass();
@@ -135,12 +130,6 @@ String.prototype.toHHMMSS = function () {
 	return time;
 }
 
-function runden(value) {
-	var k = (Math.round(value * 100) / 100).toString();
-	k += (k.indexOf('.') == -1) ? '.00' : '00';
-	return k.substring(0, k.indexOf('.') + 3);
-}
-
 /*
  * General: Eventhandler
  */
@@ -206,7 +195,7 @@ $(function () {
 	$('table.status').on('mouseout', 'tr > td.statuscol14', function () {
 		$("#chart").hide();
 	});
-	
+
 	$("#add1regex").click(function () {
 		if (MAX_SEARCH_PATTERN > 98) return;
 		MAX_SEARCH_PATTERN++;
@@ -269,7 +258,7 @@ $(function () {
 				$('#hidden' + i).prop('checked', false);
 				$('#color' + i).val($('.colorPicker_def_color').css('color'));
 				$('#color' + i).change();
-				$('#fcolor' + i).val($('.colorPicker_def_fcolor').css('color'));   
+				$('#fcolor' + i).val($('.colorPicker_def_fcolor').css('color'));
 				$('#fcolor' + i).change();
 				$('#beep' + i).prop('checked', false);
 				localStorage['regex' + i] = '';
@@ -291,7 +280,7 @@ $(function () {
 		}
 		return false;
 	});
-	
+
 	$(".debugls a, .debugl a").click(function () {
 		parameters = parameters + "&debug=" + $(this).attr('sendval');
 		return false;
@@ -813,6 +802,10 @@ function updateReaderpage(data) {
 			$(uid + " td.readercol4").text(item.stats.ecmsok + item.stats.ecmsokrel)
 				.data('sort-value', item.stats.ecmsok);
 		}
+		if (!is_nopoll('readercol19')) {
+			$(uid + " td.readercol19").text(item.stats.ecmsoklg + item.stats.ecmsoklgrel)
+				.data('sort-value', item.stats.ecmsoklg);
+		}
 		if (!is_nopoll('readercol5')) {
 			$(uid + " td.readercol5").text(item.stats.ecmsnok + item.stats.ecmsnokrel)
 				.data('sort-value', item.stats.ecmsnok);
@@ -830,6 +823,9 @@ function updateReaderpage(data) {
 		if (!is_nopoll('readercol9')) {
 			$(uid + " td.readercol9").text(item.stats.emmwritten);
 		}
+		if (!is_nopoll('readercol20')) {
+			$(uid + " td.readercol20").html(item.status + "<BR>" + item.ip);
+		}
 		if (!is_nopoll('readercol10')) {
 			$(uid + " td.readercol10").text(item.stats.emmskipped);
 		}
@@ -838,6 +834,17 @@ function updateReaderpage(data) {
 		}
 		if (!is_nopoll('readercol12')) {
 			$(uid + " td.readercol12").text(item.stats.lbweight);
+		}
+		if (!is_nopoll('readercol2')) {
+			if (data.oscam.piconenabled == "1" && item.protoicon) {
+				$(uid + " td.readercol2").html('<img class="protoicon" title="Protocol ' + item.protocol + ' ' +
+					 item.prototitle + '" alt="IC_' + item.protoicon + '" src="image?i=IC_' + item.protoicon + '">');
+			} else {
+				$(uid + " td.readercol2").text(item.protocol);
+			}
+
+			$(uid + " td.readercol2")
+				.data('sort-value', item.protosort);
 		}
 
 		if (typeof custompoll == 'function') {
@@ -1053,82 +1060,25 @@ function addremoveSubheadline(remove, data, container, subheadline, type) {
 	}
 }
 
+function fillStatus(list, type, data) {
+	list.forEach(function(key) {
+		$("#" + key).text(data.oscam[type][key]);
+	});
+}
+
+
 /*
  *	Statuspage Functions: Update Totals cacheEx
  */
 function updateCacheextotals(data) {
-	$("#total_cachexpush").text(data.oscam.totals.total_cachexpush);
-	$("#total_cachexgot").text(data.oscam.totals.total_cachexgot);
-	$("#total_cachexhit").text(data.oscam.totals.total_cachexhit);
-	$("#rel_cachexhit").text(data.oscam.totals.rel_cachexhit);
-	$("#total_cachesize").text(data.oscam.totals.total_cachesize);
+	fillStatus(["total_cachexpush", "total_cachexgot", "rel_cachexhit", "total_cachesize"], "totals", data);
 }
 
 /*
  *	Statuspage Functions: Update Totals User + Totals Reader + ECM + EMM
  */
 function updateTotals(data) {
-	$("#total_users").text(data.oscam.totals.total_users);
-	$("#total_active").text(data.oscam.totals.total_active);
-	$("#total_connected").text(data.oscam.totals.total_connected);
-	$("#total_online").text(data.oscam.totals.total_online);
-	$("#total_disabled").text(data.oscam.totals.total_disabled);
-	$("#total_expired").text(data.oscam.totals.total_expired);
-	$("#total_readers").text(data.oscam.totals.total_readers);
-	$("#total_active_readers").text(data.oscam.totals.total_active_readers);
-	$("#total_connected_readers").text(data.oscam.totals.total_connected_readers);
-	$("#total_disabled_readers").text(data.oscam.totals.total_disabled_readers);
-	$("#total_cwok").text(data.oscam.totals.total_cwok);
-	$("#total_cwok_readers").text(data.oscam.totals.total_cwok_readers);
-	$("#rel_cwok").text(data.oscam.totals.rel_cwok);
-	$("#rel_cwok_readers").text(data.oscam.totals.rel_cwok_readers);
-	$("#total_cwcache").text(data.oscam.totals.total_cwcache);
-	$("#rel_cwcache").text(data.oscam.totals.rel_cwcache);
-	$("#total_cwnok").text(data.oscam.totals.total_cwnok);
-	$("#total_cwnok_readers").text(data.oscam.totals.total_cwnok_readers);
-	$("#rel_cwnok").text(data.oscam.totals.rel_cwnok);
-	$("#rel_cwnok_readers").text(data.oscam.totals.rel_cwnok_readers);
-	$("#total_cwtout").text(data.oscam.totals.total_cwtout);
-	$("#total_cwtout_readers").text(data.oscam.totals.total_cwtout_readers);
-	$("#rel_cwtout").text(data.oscam.totals.rel_cwtout);
-	$("#rel_cwtout_readers").text(data.oscam.totals.rel_cwtout_readers);
-	$("#total_cwign").text(data.oscam.totals.total_cwign);
-	//$( "#rel_cwign" ).text( data.oscam.totals.rel_cwign );
-	$("#total_ecm_min").text(data.oscam.totals.total_ecm_min);
-	$("#total_cw").text(data.oscam.totals.total_cw);
-	$("#total_cwpos").text(data.oscam.totals.total_cwpos);
-	$("#total_cwpos_readers").text(data.oscam.totals.total_cwpos_readers);
-	$("#rel_cwpos").text(data.oscam.totals.rel_cwpos);
-	$("#rel_cwpos_readers").text(data.oscam.totals.rel_cwpos_readers);
-	$("#total_cwneg").text(data.oscam.totals.total_cwneg);
-	$("#total_cwneg_readers").text(data.oscam.totals.total_cwneg_readers);
-	$("#rel_cwneg").text(data.oscam.totals.rel_cwneg);
-	$("#rel_cwneg_readers").text(data.oscam.totals.rel_cwneg_readers);
-	$("#total_emok").text(data.oscam.totals.total_emok);
-	$("#rel_emok").text(data.oscam.totals.rel_emok);
-	$("#total_emnok").text(data.oscam.totals.total_emnok);
-	$("#rel_emnok").text(data.oscam.totals.rel_emnok);
-	$("#total_em").text(data.oscam.totals.total_em);
-	$("#total_elenr").text(data.oscam.totals.total_elenr);
-	$("#total_eheadr").text(data.oscam.totals.total_eheadr);
-	$("#total_emmerroruk_readers").text(data.oscam.totals.total_emmerroruk_readers);
-	$("#total_emmerrorg_readers").text(data.oscam.totals.total_emmerrorg_readers);
-	$("#total_emmerrors_readers").text(data.oscam.totals.total_emmerrors_readers);
-	$("#total_emmerroruq_readers").text(data.oscam.totals.total_emmerroruq_readers);
-	$("#total_emmwrittenuk_readers").text(data.oscam.totals.total_emmwrittenuk_readers);
-	$("#total_emmwritteng_readers").text(data.oscam.totals.total_emmwritteng_readers);
-	$("#total_emmwrittens_readers").text(data.oscam.totals.total_emmwrittens_readers);
-	$("#total_emmwrittenuq_readers").text(data.oscam.totals.total_emmwrittenuq_readers);
-	$("#total_emmskippeduk_readers").text(data.oscam.totals.total_emmskippeduk_readers);
-	$("#total_emmskippedg_readers").text(data.oscam.totals.total_emmskippedg_readers);
-	$("#total_emmskippeds_readers").text(data.oscam.totals.total_emmskippeds_readers);
-	$("#total_emmskippeduq_readers").text(data.oscam.totals.total_emmskippeduq_readers);
-	$("#total_emmblockeduk_readers").text(data.oscam.totals.total_emmblockeduk_readers);
-	$("#total_emmblockedg_readers").text(data.oscam.totals.total_emmblockedg_readers);
-	$("#total_emmblockeds_readers").text(data.oscam.totals.total_emmblockeds_readers);
-	$("#total_emmblockeduq_readers").text(data.oscam.totals.total_emmblockeduq_readers);
-	$("#total_sum_all_readers_ecm").text(data.oscam.totals.total_sum_all_readers_ecm);
-	$("#total_sum_all_readers_emm").text(data.oscam.totals.total_sum_all_readers_emm);
+	fillStatus(["total_users", "total_active", "total_connected", "total_online", "total_disabled", "total_expired", "total_readers", "total_active_readers", "total_connected_readers", "total_disabled_readers", "total_cwok", "total_cwok_readers", "rel_cwok", "rel_cwok_readers", "total_cwcache", "rel_cwcache", "total_cwnok", "total_cwnok_readers", "rel_cwnok", "rel_cwnok_readers", "total_cwtout", "total_cwtout_readers", "rel_cwtout", "rel_cwtout_readers", "total_cwign", "total_ecm_min", "total_cw", "total_cwpos", "total_cwpos_readers", "rel_cwpos", "rel_cwpos_readers", "total_cwneg", "total_cwneg_readers", "rel_cwneg", "rel_cwneg_readers", "total_emok", "rel_emok", "total_emnok", "rel_emnok", "total_em", "total_elenr", "total_eheadr", "total_emmerroruk_readers", "total_emmerrorg_readers", "total_emmerrors_readers", "total_emmerroruq_readers", "total_emmwrittenuk_readers", "total_emmwritteng_readers", "total_emmwrittens_readers", "total_emmwrittenuq_readers", "total_emmskippeduk_readers", "total_emmskippedg_readers", "total_emmskippeds_readers", "total_emmskippeduq_readers", "total_emmblockeduk_readers", "total_emmblockedg_readers", "total_emmblockeds_readers", "total_emmblockeduq_readers", "total_sum_all_readers_ecm", "total_sum_all_readers_emm"], "totals", data);
 }
 
 /*
@@ -1137,27 +1087,10 @@ function updateTotals(data) {
 var first_run = 1;
 
 function updateSysinfo(data) {
-	$("#mem_cur_total").text(data.oscam.sysinfo.mem_cur_total);
-	$("#mem_cur_free").text(data.oscam.sysinfo.mem_cur_free);
-	$("#mem_cur_used").text(data.oscam.sysinfo.mem_cur_used);
-	$("#mem_cur_buff").text(data.oscam.sysinfo.mem_cur_buff);
-	$("#mem_cur_cached").text(data.oscam.sysinfo.mem_cur_cached);
+	fillStatus(["mem_cur_total", "mem_cur_free", "mem_cur_used", "mem_cur_buff", "mem_cur_cached", "mem_cur_totalsw", "mem_cur_freesw", "mem_cur_usedsw", "mem_cur_shared", "oscam_vmsize", "oscam_rsssize", "server_procs", "cpu_load_0", "cpu_load_1", "cpu_load_2"], "sysinfo", data);
 	$("#mem_cur_freem").attr('title', 'max Free: ' + data.oscam.sysinfo.mem_cur_freem + ' \n(incl. Buffer & Cached)');
-	$("#mem_cur_totalsw").text(data.oscam.sysinfo.mem_cur_totalsw);
-	$("#mem_cur_freesw").text(data.oscam.sysinfo.mem_cur_freesw);
-	$("#mem_cur_usedsw").text(data.oscam.sysinfo.mem_cur_usedsw);
-	$("#mem_cur_shared").text(data.oscam.sysinfo.mem_cur_shared);
-	$("#oscam_vmsize").text(data.oscam.sysinfo.oscam_vmsize);
-	$("#oscam_rsssize").text(data.oscam.sysinfo.oscam_rsssize);
-	$("#server_procs").text(data.oscam.sysinfo.server_procs);
-	$("#cpu_load_0").text(data.oscam.sysinfo.cpu_load_0);
-	$("#cpu_load_1").text(data.oscam.sysinfo.cpu_load_1);
-	$("#cpu_load_2").text(data.oscam.sysinfo.cpu_load_2);
 	if (!first_run) {
-		$("#oscam_refresh").text(data.oscam.sysinfo.oscam_refresh);
-		$("#oscam_cpu_user").text(data.oscam.sysinfo.oscam_cpu_user);
-		$("#oscam_cpu_sys").text(data.oscam.sysinfo.oscam_cpu_sys);
-		$("#oscam_cpu_sum").text(data.oscam.sysinfo.oscam_cpu_sum);
+		fillStatus(["oscam_refresh", "oscam_cpu_user", "oscam_cpu_sys", "oscam_cpu_sum"], "sysinfo", data);
 	}
 	first_run = 0;
 }
@@ -1239,20 +1172,20 @@ function updateStatuspage(data) {
 					'" href="status.html?hide=' +
 					item.thid.substring(3, item.thid.length) +
 					'"><img class="icon" alt="Hide"' +
-					'" src="image?i=ICHID"></img>');
+					'" src="image?i=ICHID">');
 			}
 
 			if (!is_nopoll('statuscol1')) {
 				$(uid + " > td.statuscol1").append('<a title="' + kill2 + ' ' +
 					name1 + ': ' + name3 + (item.desc ? '\n' + item.desc.replace('&#13;', '') : '') +
-					kill1 + '"><img class="icon" alt="' + kill2 + 
-					'" src="image?i=' + kill3 + '"></img>');
+					kill1 + '"><img class="icon" alt="' + kill2 +
+					'" src="image?i=' + kill3 + '">');
 			}
 
 			if (!is_nopoll('statuscol4')) {
 				if (data.oscam.piconenabled == "1" && !item.upicmissing) {
 					$(uid + " > td.statuscol4").append('<a href="' + edit1 + name2 + '"><img class="statususericon" title="Edit ' +
-						name1 + ': ' + name3 + (item.desc ? '\n' + item.desc.replace('&#13;', '') : '') + '" src="image?i=IC_' + name2 + '"></img></a>');
+						name1 + ': ' + name3 + (item.desc ? '\n' + item.desc.replace('&#13;', '') : '') + '" src="image?i=IC_' + name2 + '"></a>');
 				} else {
 					$(uid + " > td.statuscol4").append('<a href="' + edit1 + name2 + '" title="Edit ' + name1 + ': ' +
 						name3 + (item.desc ? '\n' + item.desc.replace('&#13;', '') : '') + '\n' + item.upicmissing + '">' + name3 + '</a>');
@@ -1265,8 +1198,8 @@ function updateStatuspage(data) {
 
 			if (!is_nopoll('statuscol9')) {
 				if (data.oscam.piconenabled == "1" && item.protoicon) {
-					$(uid + " > td.statuscol9").append('<img class="protoicon" title="Protocol ' + item.protocol + ' ' + 
-						item.protocolext + '" alt="IC_' + item.protoicon + '" src="image?i=IC_' + item.protoicon + '"></img>');
+					$(uid + " > td.statuscol9").append('<img class="protoicon" title="Protocol ' + item.protocol + ' ' +
+						item.protocolext + '" alt="IC_' + item.protoicon + '" src="image?i=IC_' + item.protoicon + '">');
 				} else {
 					$(uid + " > td.statuscol9").attr('title', item.protocolext).text(item.protocol);
 				}
@@ -1279,8 +1212,8 @@ function updateStatuspage(data) {
 		if ($(uid + " > td.statuscol4").text().match('anonymous')) {
 			if (!is_nopoll('statuscol9')) {
 				if (data.oscam.piconenabled == "1" && item.protoicon) {
-					$(uid + " > td.statuscol9").html('<img class="protoicon" title="Protocol ' + item.protocol + ' ' + 
-						item.protocolext + '" alt="IC_' + item.protoicon + '" src="image?i=IC_' + item.protoicon + '"></img>');
+					$(uid + " > td.statuscol9").html('<img class="protoicon" title="Protocol ' + item.protocol + ' ' +
+						item.protocolext + '" alt="IC_' + item.protoicon + '" src="image?i=IC_' + item.protoicon + '">');
 				} else {
 					$(uid + " > td.statuscol9").attr('title', item.protocolext).text(item.protocol);
 				}
@@ -1290,7 +1223,7 @@ function updateStatuspage(data) {
 				if (data.oscam.piconenabled == "1" && !item.upicmissing) {
 					$(uid + " > td.statuscol4").html('<a href="user_edit.html?user=' + item.name_enc +
 						'"><img class="statususericon" title="Edit User: ' + decodeURIComponent(item.name_enc) + item.desc +
-						'" src="image?i=IC_' + item.name_enc + '"></img></a>');
+						'" src="image?i=IC_' + item.name_enc + '"></a>');
 				} else {
 					$(uid + " > td.statuscol4").html('<a href="user_edit.html?user=' + item.name_enc + '" title="Edit User: ' +
 						decodeURIComponent(item.name_enc) + item.desc + item.upicmissing + '">' + decodeURIComponent(item.name_enc) + '</a>');
@@ -1566,15 +1499,6 @@ function updateStatuspage(data) {
 
 
 /*
- * Cacheexpage Functions: Update Page
- */
-function updateCacheexpage(data) {
-
-	updateCacheextotals(data);
-	
-}
-
-/*
  *	General fork into page refresh functions
  */
 function updatePage(data) {
@@ -1599,7 +1523,7 @@ function updatePage(data) {
 		updateLogpage(data);
 		break;
 	case 'cacheex':
-		updateCacheexpage(data);
+		updateCacheextotals(data);
 		break;
 	default:
 		break;
@@ -1675,7 +1599,7 @@ function setPollrefresh() {
 	// Set pollintervall, if pollrefresh set to 0 disable polling
 	if (pollrefresh) {
 		pollintervall = parseInt(pollrefresh) * 1000;
-		if (pollintervall > 99000) pollintervall == 99000;
+		if (pollintervall > 99000) pollintervall = 99000;
 		if (!nostorage) {
 			if (sessionStorage.pollintervall) pollintervall = sessionStorage.pollintervall;
 			else sessionStorage.pollintervall = pollintervall;
@@ -1691,7 +1615,7 @@ var nostorage = 0;
  * General: Start Polling
  */
 $(document).ready(function () {
-	
+
 	try {
 		if (!localStorage) {
 			nostorage = 1;
@@ -1703,14 +1627,14 @@ $(document).ready(function () {
 		nostorage = 1;
 		$('#regex').remove();
 	}
-	
+
 	// set default to nothing excluded
 	poll_excluded = '';
 
 	// help wiki links
 	if (typeof oscamconf != "undefined") {
 		var language = $('meta[http-equiv="language"]').attr("content");
-		var wikihref = "http://www.streamboard.tv/wiki/OSCam/" + language + "/Config/oscam." + oscamconf + "#";
+		var wikihref = "https://wiki.streamboard.tv/wiki/OSCam/" + language + "/Config/oscam." + oscamconf + "#";
 		$("form table a").click(function () {
 			if (!$(this).attr("href") && !$(this).attr("name")) {
 				if ($(this).data('p')) {
@@ -1736,7 +1660,7 @@ $(document).ready(function () {
 			var saved_regex = localStorage.MAX_SEARCH_PATTERN;
 			MAX_SEARCH_PATTERN = parseInt(saved_regex ? saved_regex : MAX_SEARCH_PATTERN);
 			$('<LI style="display:none;"><span class="colorPicker_def_color"></span><span class="colorPicker_def_fcolor"></span></LI>').insertBefore(".regexdata_save");
-			
+
 			var beep_disabled = ' disabled="disabled" title="Not supported by your browser"';
 			var contextClass = (window.AudioContext || window.webkitAudioContext || window.mozAudioContext || window.oAudioContext || window.msAudioContext);
 			if (contextClass) { beep_disabled = ''; }
@@ -1788,7 +1712,6 @@ $(document).ready(function () {
 			break;
 
 		default:
-			//do nothing
 
 			break;
 		}
@@ -1822,7 +1745,7 @@ function decodeVideoguardEMM(text, target, addHideButton) {
 		html += '<p><input type="button" value="Hide" title="Hide" onclick="$(\'' + target + '\').css(\'display\', \'none\');" /></p><br/>';
 	}
 
-  var AddTextType = {"data":"Data", "length":"Length", "type":"Type", "emmType":"EMM-Type", "encryptionType":"Encryption Type", 
+  var AddTextType = {"data":"Data", "length":"Length", "type":"Type", "emmType":"EMM-Type", "encryptionType":"Encryption Type",
   	"keyIndex":"Key-Index", "keyIndex2":"Key-Index2", "fixedValue":"Fixed Value", "pairingDevice":"Pairing Device", "date":"Date",
   	"checksum":"Checksum", "emmStartMarker":"EMM Marker", "cardSerial":"Serial Number (Smartcard)",
   	"boxSerial":"Serial Number (Receiver)", "emmEndMarker":"Sub-EMM End", "rest":"rest ????",
@@ -1839,7 +1762,7 @@ function decodeVideoguardEMM(text, target, addHideButton) {
 		for (var i = 0; i < count; i++) {
 			var v = bytes.shift();
 			if (typeof v === 'undefined') {
-				v = '??';
+				v = 'XX';
 			}
 			html += v + ' ';
 			ret += v;
@@ -1854,7 +1777,7 @@ function decodeVideoguardEMM(text, target, addHideButton) {
 					text += " (cccam)";
 				}
 				break;
-			
+
 			case AddTextType.mpegSectionLength:
 				var len = ((parseInt(parm, 16) << 8) + parseInt(ret, 16)) & 0x0FFF;
 				text += ' - <b>' + len + '</b>';
@@ -1864,9 +1787,9 @@ function decodeVideoguardEMM(text, target, addHideButton) {
 				} else {
 					text += ' - <font style="color:#F00000"><b>FAIL (' + bytes.length + ')</b></font>';
 				}
-				ret = len;			
+				ret = len;
 				break;
-			
+
 			case AddTextType.length:
 			case AddTextType.cardEmmLength:
 			case AddTextType.cardNanoLength:
@@ -1885,25 +1808,25 @@ function decodeVideoguardEMM(text, target, addHideButton) {
 				ret = len;
 				break;
 			case AddTextType.type:
-			
+
 				var type = parseInt(ret, 16) & 0xC0;
 				var subEmmCount = ((parseInt(ret, 16) & 0x30) >> 16) + 1;
-				
+
 				if (type == 0x40) {
 					text += ' - <b>unique</b> EMM For Smartcard';
-				} 
+				}
 				else if (type == 0xC0) {
 					text += ' - <b>unique</b> EMM For Receiver/CAM';
-				} 
+				}
 				else if (type == 0x80) {
 					text += ' - <b>shared</b> EMM For Smartcard';
-				} 
+				}
 				else {
 					text += ' - <b>global</b> EMM';
 				}
-				
+
 				text += ' (' + subEmmCount + ' Sub EMMs)';
-				
+
 				break;
 
 			case AddTextType.emmType:
@@ -1937,7 +1860,7 @@ function decodeVideoguardEMM(text, target, addHideButton) {
 				}
 
 				break;
-				
+
 			case AddTextType.cardNanoType:
 				switch (ret) {
 					case '01':
@@ -1957,7 +1880,7 @@ function decodeVideoguardEMM(text, target, addHideButton) {
 						break;
 				}
 				break;
-					
+
 			case AddTextType.irdNanoType:
 				switch (ret) {
 					case '02':
@@ -1975,7 +1898,7 @@ function decodeVideoguardEMM(text, target, addHideButton) {
 						break;
 				}
 				break;
-					
+
 			case AddTextType.filterNanoType:
 				switch (ret) {
 					case '30':
@@ -1989,19 +1912,19 @@ function decodeVideoguardEMM(text, target, addHideButton) {
 						break;
 				}
 				break;
-				
+
 			case AddTextType.keyIndex:
 
-				if (!isV13V14) {
+				if (!isV14V15) {
 					text += ' - <b>' + ret + '</b>';
 				}
 
 				switch (ret) {
 					case '01':
-						text += ' - <b>V13</b>';
+						text += ' - <b>V14</b>';
 						break;
 					case '02':
-						text += ' - <b>V14</b>';
+						text += ' - <b>V15</b>';
 						break;
 					default:
 						text += ' - <b>unknown</b>';
@@ -2054,17 +1977,17 @@ function decodeVideoguardEMM(text, target, addHideButton) {
 			case AddTextType.irdEmmChecksum:
 				var checksumData = parseInt(ret, 16);
 				var checksum = 0x00;
-					
+
 				for(var i = 0; i < parm.length; i++) {
 					checksum += parseInt(parm[i], 16);
 					checksum &= 0xFF;
 				}
-				
+
 				if (checksumData == checksum) {
 					text += ' - <font style="color:#009900"><b>OK</b></font>';
 				} else {
 					text += ' - <font style="color:#F00000"><b>FAIL (' + checksum.toString(16).toUpperCase() + ')</b></font>';
-				}		
+				}
 				break;
 		}
 
@@ -2075,7 +1998,7 @@ function decodeVideoguardEMM(text, target, addHideButton) {
 	function ReadSingleCardEMM() {
 		var cardEmmLength = addText(1, '#00F', AddTextType.cardEmmLength);
 		var remainingDataLength = cardEmmLength;
-		
+
 		while (remainingDataLength > 0 && bytes.length) {
 			var cardNanoType = addText(1, '#008000', AddTextType.cardNanoType);
 
@@ -2101,13 +2024,13 @@ function decodeVideoguardEMM(text, target, addHideButton) {
 				"44": 0x04,
 				"4E": 0x04,
 				"7A": 0x02,
-				
+
 				"02": 0x01,
 				"03": 0x03,
 				"04": 0x00,
 				"48": 0x00,
 				"C0": 0x00,
-				
+
 			};
 
 			if (fixedSizeNanos[cardNanoType] != undefined) {
@@ -2194,18 +2117,14 @@ function decodeVideoguardEMM(text, target, addHideButton) {
 	}
 }
 
-	// ----------------------------------------------------------------------
-	// ----------------------------------------------------------------------
-	// ----------------------------------------------------------------------
-	
 	var partOfLength = bytes[1];
 	addText(2, '#000', AddTextType.emmStartMarker);
 	addText(1, '#00F', AddTextType.mpegSectionLength, partOfLength);
-	
+
 	var filterByte = parseInt(addText(1, '#199a8d', AddTextType.type), 16);
 	var type = filterByte & 0xC0;
 	var subEmmCount = ((filterByte & 0x30) >> 16) + 1;
-	
+
 	if(partOfLength != 0) { // partOfLength == 0 for emms by cccam clients, these do not have the serials part
 		for(var i = 0; i < subEmmCount; i++) {
  			if (type == 0x40) { // unique: card
@@ -2234,7 +2153,7 @@ function decodeVideoguardEMM(text, target, addHideButton) {
 		if (irdEmmLength > 0) {
 			switch (emmtype) {
 				case '02':
-					
+
 					var remainingDataLength = irdEmmLength - 1;
 					while(remainingDataLength > 0 && bytes.length) {
 						remainingDataLength -= ReadIrdNano();
@@ -2244,7 +2163,7 @@ function decodeVideoguardEMM(text, target, addHideButton) {
 				case '07':
 					var filterSectionLength = addText(1, '#00F', AddTextType.filterSectionLength);
 					var remainingDataLength = filterSectionLength;
-					
+
 					while (remainingDataLength > 0 && bytes.length) {
 						var filterNano = addText(1, '#008000', AddTextType.filterNanoType);
 						switch (filterNano) {
@@ -2263,13 +2182,13 @@ function decodeVideoguardEMM(text, target, addHideButton) {
 								break;
 						}
 					}
-					
+
 					var remainingDataLength = irdEmmLength - 1 - filterSectionLength - 1;
 					while(remainingDataLength > 0 && bytes.length) {
 						remainingDataLength -= ReadIrdNano();
 					}
 					break;
-					
+
 				default:
 					addText(irdEmmLength - 1, '#000', AddTextType.data);
 					break;

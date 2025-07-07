@@ -12,7 +12,7 @@
 /* Returns the default value if string length is zero, otherwise atoi is called*/
 int32_t strToIntVal(char *value, int32_t defaultvalue)
 {
-	if(strlen(value) == 0) { return defaultvalue; }
+	if(cs_strlen(value) == 0) { return defaultvalue; }
 	errno = 0; // errno should be set to 0 before calling strtol
 	int32_t i = strtol(value, NULL, 10);
 	return (errno == 0) ? i : defaultvalue;
@@ -21,7 +21,7 @@ int32_t strToIntVal(char *value, int32_t defaultvalue)
 /* Returns the default value if string length is zero, otherwise strtoul is called*/
 uint32_t strToUIntVal(char *value, uint32_t defaultvalue)
 {
-	if(strlen(value) == 0) { return defaultvalue; }
+	if(cs_strlen(value) == 0) { return defaultvalue; }
 	errno = 0; // errno should be set to 0 before calling strtoul
 	uint32_t i = strtoul(value, NULL, 10);
 	return (errno == 0) ? i : defaultvalue;
@@ -31,7 +31,7 @@ uint32_t strToUIntVal(char *value, uint32_t defaultvalue)
   If varname is longer than CONFVARWIDTH, no whitespace is added*/
 void fprintf_conf(FILE *f, const char *varname, const char *fmtstring, ...)
 {
-	int32_t varlen = strlen(varname);
+	int32_t varlen = cs_strlen(varname);
 	int32_t max = (varlen > CONFVARWIDTH) ? varlen : CONFVARWIDTH;
 	char varnamebuf[max + 3];
 	char *ptr = varnamebuf + varlen;
@@ -45,9 +45,9 @@ void fprintf_conf(FILE *f, const char *varname, const char *fmtstring, ...)
 		++varlen;
 	}
 	cs_strncpy(ptr, "= ", sizeof(varnamebuf) - (ptr - varnamebuf));
-	if(fwrite(varnamebuf, sizeof(char), strlen(varnamebuf), f))
+	if(fwrite(varnamebuf, sizeof(char), cs_strlen(varnamebuf), f))
 	{
-		if(strlen(fmtstring) > 0)
+		if(cs_strlen(fmtstring) > 0)
 		{
 			va_start(argptr, fmtstring);
 			vfprintf(f, fmtstring, argptr);
@@ -94,23 +94,23 @@ int config_list_parse(const struct config_list *clist, const char *token, char *
 		case OPT_STRING:
 		{
 			char **scfg = var;
-			if(c->def.d_char && strlen(value) == 0)  // Set default
+			if(c->def.d_char && cs_strlen(value) == 0)  // Set default
 				{ value = c->def.d_char; }
 			NULLFREE(*scfg);
-			if(strlen(value))
+			if(cs_strlen(value))
 				{ *scfg = cs_strdup(value); }
 			return 1;
 		}
 		case OPT_SSTRING:
 		{
 			char *scfg = var;
-			if(c->def.d_char && strlen(value) == 0)  // Set default
+			if(c->def.d_char && cs_strlen(value) == 0)  // Set default
 				{ value = c->def.d_char; }
 			scfg[0] = '\0';
-			unsigned int len = strlen(value);
+			unsigned int len = cs_strlen(value);
 			if(len)
 			{
-				strncpy(scfg, value, c->str_size - 1);
+				cs_strncpy(scfg, value, c->str_size);
 				if(len > c->str_size)
 				{
 					fprintf(stderr, "WARNING: Config value for '%s' (%s, len=%u) exceeds max length: %d (%s)\n",
@@ -122,13 +122,13 @@ int config_list_parse(const struct config_list *clist, const char *token, char *
 		case OPT_HEX_ARRAY:
 		{
 			uint8_t *hex_array = var;
-			if(!strlen(value))
+			if(!cs_strlen(value))
 				{ memset(hex_array, 0, c->def.array_size); }
 			else if(key_atob_l(value, hex_array, c->def.array_size * 2))
 			{
 				memset(hex_array, 0, c->def.array_size);
 				fprintf(stderr, "WARNING: Config value for '%s' (%s, len=%zu) requires %d chars.\n",
-						token, value, strlen(value), c->def.array_size * 2);
+						token, value, cs_strlen(value), c->def.array_size * 2);
 			}
 			return 1;
 		}
@@ -172,7 +172,7 @@ void config_list_save_ex(FILE *f, const struct config_list *clist, void *config_
 		case OPT_INT8:
 		{
 			int8_t val = *(int8_t *)var;
-			
+
 			// always save pmt_mode, because external tools parse it
 			if(save_all || val != c->def.d_int8 || !strcmp(c->config_name, "pmt_mode"))
 				{ fprintf_conf(f, c->config_name, "%d\n", val); }
@@ -322,7 +322,7 @@ void config_list_set_defaults(const struct config_list *clist, void *config_data
 		{
 			char *scfg = var;
 			scfg[0] = '\0';
-			if(c->def.d_char && strlen(c->def.d_char))
+			if(c->def.d_char && cs_strlen(c->def.d_char))
 				{ cs_strncpy(scfg, c->def.d_char, c->str_size); }
 			break;
 		}
@@ -502,17 +502,19 @@ FILE *create_config_file(const char *conf_filename)
 {
 	char temp_file[256];
 	get_config_filename(temp_file, sizeof(temp_file), conf_filename);
-	strncat(temp_file, ".tmp", sizeof(temp_file) - strlen(temp_file) - 1);
+	if (!cs_strncat(temp_file, ".tmp", sizeof(temp_file))) {
+		return NULL;
+	}
 	FILE *f = fopen(temp_file, "w");
 	if(!f)
 	{
 		cs_log("ERROR: Cannot create file \"%s\" (errno=%d %s)", temp_file, errno, strerror(errno));
 		return NULL;
 	}
-	fprintf(f, "# %s generated automatically by Streamboard OSCAM %s SVN r%s\n",
-			conf_filename, CS_VERSION, CS_SVN_VERSION);
-	fprintf(f, "# Read more: http://www.streamboard.tv/svn/oscam/trunk/Distribution/doc/txt/%s.txt\n\n",
-			conf_filename);
+	fprintf(f, "# %s generated automatically by Streamboard OSCam %s\n",
+			conf_filename, CS_VERSION);
+	fprintf(f, "# Read more: %s/blob/master/Distribution/doc/txt/%s.txt\n\n",
+			SCM_URL, conf_filename);
 	return f;
 }
 
@@ -522,8 +524,8 @@ bool flush_config_file(FILE *f, const char *conf_filename)
 	get_config_filename(dst_file, sizeof(dst_file), conf_filename);
 	memcpy(tmp_file, dst_file, sizeof(tmp_file));
 	memcpy(bak_file, dst_file, sizeof(bak_file));
-	strncat(tmp_file, ".tmp", sizeof(tmp_file) - strlen(tmp_file) - 1);
-	strncat(bak_file, ".bak", sizeof(bak_file) - strlen(bak_file) - 1);
+	strncat(tmp_file, ".tmp", sizeof(tmp_file) - cs_strlen(tmp_file) - 1);
+	strncat(bak_file, ".bak", sizeof(bak_file) - cs_strlen(bak_file) - 1);
 	if(f)
 	{
 		fclose(f);

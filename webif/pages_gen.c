@@ -31,9 +31,11 @@
 #include <inttypes.h>
 #include <libgen.h>
 
-#define USE_COMPRESSION 1
-
+#include "../config.h"
+#ifdef WITH_COMPRESS_WEBIF
 #include "../minilzo/minilzo.h"
+#define USE_COMPRESSION 1
+#endif
 
 #define MAX_TEMPLATES 512
 static char *index_filename = "pages_index.txt";
@@ -45,7 +47,7 @@ struct template
 {
 	char ident[64];
 	char file[128];
-	char deps[256];
+	char deps[1024];
 	uint32_t data_len;
 	enum { TXT, BIN } type;
 	uint8_t mime_type;

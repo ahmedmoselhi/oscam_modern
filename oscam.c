@@ -16,13 +16,13 @@
 #include "module-dvbapi-mca.h"
 #include "module-dvbapi-chancache.h"
 #include "module-gbox-sms.h"
-#include "module-ird-guess.h"
 #include "module-lcd.h"
 #include "module-led.h"
 #include "module-stat.h"
 #include "module-webif.h"
 #include "module-webif-tpl.h"
 #include "module-cw-cycle-check.h"
+#include "module-streamrelay.h"
 #include "oscam-chk.h"
 #include "oscam-cache.h"
 #include "oscam-client.h"
@@ -69,10 +69,15 @@ static void ssl_init(void) { }
 static void ssl_done(void) { }
 #endif
 
+#ifdef WITH_SIGNING
+#include "oscam-signing.h"
+#endif
+
+extern char *config_ssl;
 extern char *config_mak;
 
 /*****************************************************************************
-        Globals
+		Globals
 *****************************************************************************/
 const char *syslog_ident = "oscam";
 static char *oscam_pidfile;
@@ -81,48 +86,40 @@ static char default_pidfile[64];
 int32_t exit_oscam = 0;
 static struct s_module modules[CS_MAX_MOD];
 
-struct s_client *first_client = NULL;  //Pointer to clients list, first client is master
-struct s_reader *first_active_reader = NULL;  //list of active readers (enable=1 deleted = 0)
-LLIST *configured_readers = NULL;  //list of all (configured) readers
+struct s_client *first_client = NULL; // Pointer to clients list, first client is master
+struct s_reader *first_active_reader = NULL; // list of active readers (enable=1 deleted = 0)
+LLIST *configured_readers = NULL; // list of all (configured) readers
 
-uint16_t  len4caid[256];    // table for guessing caid (by len)
-char  cs_confdir[128] = CS_CONFDIR;
+char cs_confdir[128];
 uint16_t cs_dblevel = 0; // Debug Level
 int32_t thread_pipe[2] = {0, 0};
-static int8_t cs_restart_mode = 1; //Restartmode: 0=off, no restart fork, 1=(default)restart fork, restart by webif, 2=like=1, but also restart on segfaults
-#ifdef WITH_UTF8
-uint8_t cs_http_use_utf8 = 1;
-#else
-uint8_t cs_http_use_utf8 = 0;
-#endif
+static int8_t cs_restart_mode = 1; // Restartmode: 0=off, no restart fork, 1=(default)restart fork, restart by webif, 2=like=1, but also restart on segfaults
 static int8_t cs_capture_SEGV;
 static int8_t cs_dump_stack;
 static uint16_t cs_waittime = 60;
-char  cs_tmpdir[200] = {0x00};
+char cs_tmpdir[200];
 CS_MUTEX_LOCK system_lock;
 CS_MUTEX_LOCK config_lock;
 CS_MUTEX_LOCK gethostbyname_lock;
 CS_MUTEX_LOCK clientlist_lock;
 CS_MUTEX_LOCK readerlist_lock;
 CS_MUTEX_LOCK fakeuser_lock;
-CS_MUTEX_LOCK readdir_lock;
 CS_MUTEX_LOCK cwcycle_lock;
 pthread_key_t getclient;
 static int32_t bg;
 static int32_t gbdb;
 static int32_t max_pending = 32;
 
-//ecms list
+// ecms list
 CS_MUTEX_LOCK ecmcache_lock;
-struct ecm_request_t    *ecmcwcache = NULL;
+struct ecm_request_t *ecmcwcache = NULL;
 uint32_t ecmcwcache_size = 0;
 
-//pushout deleted list
+// pushout deleted list
 CS_MUTEX_LOCK ecm_pushed_deleted_lock;
-struct ecm_request_t	*ecm_pushed_deleted = NULL;
+struct ecm_request_t *ecm_pushed_deleted = NULL;
 
-
-struct  s_config  cfg;
+struct s_config cfg;
 
 int log_remove_sensitive = 1;
 
@@ -130,10 +127,10 @@ static char *prog_name;
 static char *stb_boxtype;
 static char *stb_boxname;
 
-static uint32_t oscam_stacksize = 0;
+static int32_t oscam_stacksize = 0;
 
 /*****************************************************************************
-        Statics
+		Statics
 *****************************************************************************/
 /* Prints usage information and information about the built-in modules. */
 static void show_usage(void)
@@ -144,11 +141,11 @@ static void show_usage(void)
 		   "| | | \\___ \\| |  / _` | '_ ` _ \\\n"
 		   "| |_| |___) | |_| (_| | | | | | |\n"
 		   " \\___/|____/ \\___\\__,_|_| |_| |_|\n\n");
-	printf("OSCam cardserver v%s, build r%s (%s)\n", CS_VERSION, CS_SVN_VERSION, CS_TARGET);
-	printf("Copyright (C) 2009-2015 OSCam developers.\n");
+	printf("OSCam Cardserver v%s@%s (%s)\n", CS_VERSION, CS_GIT_COMMIT, CS_TARGET);
+	printf("Copyright (C) 2009-2025 OSCam developers.\n");
 	printf("This program is distributed under GPLv3.\n");
 	printf("OSCam is based on Streamboard mp-cardserver v0.9d written by dukat\n");
-	printf("Visit http://www.streamboard.tv/oscam/ for more details.\n\n");
+	printf("Visit %s for more details.\n\n", BOARD_URL);
 
 	printf(" ConfigDir  : %s\n", CS_CONFDIR);
 	printf("\n");
@@ -197,14 +194,13 @@ static void show_usage(void)
 	printf("                         .  1024 - Client ECM logging.\n");
 	printf("                         .  2048 - CSP logging.\n");
 	printf("                         .  4096 - CWC logging.\n");
+#ifdef CS_CACHEEX_AIO
+	printf("                         .  8192 - CW Cache logging.\n");
+#endif
 	printf("                         . 65535 - Debug all.\n");
 	printf("\n Settings:\n");
 	printf(" -p, --pending-ecm <num> | Set the maximum number of pending ECM packets.\n");
 	printf("                         . Default: 32 Max: 4096\n");
-	if(config_enabled(WEBIF))
-	{
-		printf(" -u, --utf8              | Enable WebIf support for UTF-8 charset.\n");
-	}
 	printf("\n Debug parameters:\n");
 	printf(" -a, --crash-dump        | Write oscam.crash file on segfault. This option\n");
 	printf("                         . needs GDB to be installed and OSCam executable to\n");
@@ -245,11 +241,16 @@ static const struct option long_options[] =
 	{ "show-sensitive",     no_argument,       NULL, 'S' },
 	{ "capture-segfaults",  no_argument,       NULL, 's' },
 	{ "temp-dir",           required_argument, NULL, 't' },
-	{ "utf8",               no_argument,       NULL, 'u' },
 	{ "build-info",         no_argument,       NULL, 'V' },
 	{ "wait",               required_argument, NULL, 'w' },
 	{ 0, 0, 0, 0 }
 };
+
+static void set_default_dirs_first(void)
+{
+	snprintf(cs_confdir, sizeof(cs_confdir), "%s", CS_CONFDIR);
+	memset(cs_tmpdir, 0, sizeof(cs_tmpdir)); // will get further procesed trought oscam_files.c !!
+}
 
 static void write_versionfile(bool use_stdout);
 
@@ -324,13 +325,6 @@ static void parse_cmdline_params(int argc, char **argv)
 			}
 			break;
 		}
-		case 'u': // --utf8
-			if(config_enabled(WEBIF))
-			{
-				cs_http_use_utf8 = 1;
-				printf("WARNING: Web interface UTF-8 mode enabled. Carefully read documentation as bugs may arise.\n");
-			}
-			break;
 		case 'V': // --build-info
 			write_versionfile(true);
 			exit(EXIT_SUCCESS);
@@ -343,16 +337,19 @@ static void parse_cmdline_params(int argc, char **argv)
 }
 
 #define write_conf(CONFIG_VAR, text) \
-    fprintf(fp, "%-40s %s\n", text ":", config_enabled(CONFIG_VAR) ? "yes" : "no")
+	fprintf(fp, "%-40s %s\n", text ":", config_enabled(CONFIG_VAR) ? "yes" : "no")
 
 #define write_readerconf(CONFIG_VAR, text) \
-    fprintf(fp, "%-40s %s\n", text ":", config_enabled(CONFIG_VAR) ? "yes" : "no - no EMM support!")
+	fprintf(fp, "%-40s %s\n", text ":", config_enabled(CONFIG_VAR) ? "yes" : "no - no EMM support!")
 
 #define write_cardreaderconf(CONFIG_VAR, text) \
-    fprintf(fp, "%s%-29s %s\n", "cardreader_", text ":", config_enabled(CONFIG_VAR) ? "yes" : "no")
+	fprintf(fp, "%s%-29s %s\n", "cardreader_", text ":", config_enabled(CONFIG_VAR) ? "yes" : "no")
 
 static void write_versionfile(bool use_stdout)
 {
+#ifdef WITH_SIGNING
+	if(!init_signing_info(prog_name)) cs_exit_oscam();
+#endif
 	FILE *fp = stdout;
 	if(!use_stdout)
 	{
@@ -366,64 +363,103 @@ static void write_versionfile(bool use_stdout)
 		struct tm st;
 		time_t walltime = cs_time();
 		localtime_r(&walltime, &st);
-		fprintf(fp, "Unix starttime: %ld\n", walltime);
+		fprintf(fp, "Unix Starttime: %ld\n", walltime);
 		fprintf(fp, "Starttime:      %02d.%02d.%04d %02d:%02d:%02d\n",
 				st.tm_mday, st.tm_mon + 1, st.tm_year + 1900,
 				st.tm_hour, st.tm_min, st.tm_sec);
 	}
 
-	fprintf(fp, "Version:        oscam-%s-r%s\n", CS_VERSION, CS_SVN_VERSION);
+	fprintf(fp, "Build Date:     %s\n", CS_BUILD_DATE);
+	fprintf(fp, "Version:        %s@%s\n", CS_VERSION, CS_GIT_COMMIT);
 	fprintf(fp, "Compiler:       %s\n", CS_TARGET);
-	fprintf(fp, "Box type:       %s (%s)\n", boxtype_get(), boxname_get());
+#ifdef USE_COMPRESS
+	fprintf(fp, "Compression:    %s, level %s\n", COMP_VERSION, COMP_LEVEL);
+#endif
+	fprintf(fp, "Box Type:       %s (%s)\n", boxtype_get(), boxname_get());
 	fprintf(fp, "PID:            %d\n", getppid());
 	fprintf(fp, "TempDir:        %s\n", cs_tmpdir);
-	fprintf(fp, "ConfigDir:      %s\n", cs_confdir);
-#ifdef WEBIF
-	fprintf(fp, "WebifPort:      %d\n", cfg.http_port);
-#endif
 #ifdef MODULE_GBOX
 	if(cfg.gbox_tmp_dir == NULL)
 	{
-		fprintf(fp, "\nGBox tmp_dir:   not defined using: %s\n", cs_tmpdir);
+		fprintf(fp, "GBox tmp_dir:   not defined using: %s\n", cs_tmpdir);
 	}
 	else
 	{
-		fprintf(fp, "\nGBox tmp_dir:   %s\n", cfg.gbox_tmp_dir);
+		fprintf(fp, "GBox tmp_dir:   %s\n", cfg.gbox_tmp_dir);
 	}
-	fprintf(fp, "                value read during start up, not refreshed if changed later in webif!\n");
 #endif
+
+	fprintf(fp, "ConfigDir:      %s\n", cs_confdir);
+
+#ifdef WEBIF
+	fprintf(fp, "WebifPort:      %d\n", cfg.http_port);
+#endif
+
+#ifdef WITH_SIGNING
+	fprintf(fp, "\n");
+	fprintf(fp, "Signature:      %s\n", (osi.is_verified ? "Valid - successfully verified using built-in Public Key" : "Invalid - wrong signature or internal error occured!"));
+	fprintf(fp, "  Signer:       %s\n", config_ssl);
+	fprintf(fp, "  SHA256:       %s\n", osi.hash_sha256);
+	fprintf(fp, "Certificate:    %s %s Certificate\n", ((osi.cert_is_valid_self || osi.cert_is_valid_system) ? "Trusted" : "Untrusted"), (osi.cert_is_cacert ? "CA" : "self signed"));
+	fprintf(fp, "  Subject:      %s\n", osi.cert_subject);
+	fprintf(fp, "  Issuer:       %s\n", osi.cert_issuer);
+	fprintf(fp, "  Version:      %d\n", osi.cert_version);
+	fprintf(fp, "  Serial:       %s\n", osi.cert_serial);
+	fprintf(fp, "  Fingerprint:  %s\n", osi.cert_fingerprint);
+	fprintf(fp, "  Valid from:   %s\n", osi.cert_valid_from);
+	fprintf(fp, "  Valid to:     %s\n", osi.cert_valid_to);
+	fprintf(fp, "  Status:       %s\n", (osi.cert_is_expired ? "Expired" : "Valid"));
+	fprintf(fp, "  Type:         %s\n", osi.pkey_type);
+	if (osi.system_ca_file) fprintf(fp, "System CA:      %s\n", osi.system_ca_file);
+#endif
+
 	fprintf(fp, "\n");
 	write_conf(WEBIF, "Web interface support");
 	write_conf(WEBIF_LIVELOG, "LiveLog support");
 	write_conf(WEBIF_JQUERY, "jQuery support intern");
-	write_conf(TOUCH, "Touch interface support");
+	write_conf(WITH_COMPRESS_WEBIF, "Compressed pages");
 	write_conf(WITH_SSL, "SSL support");
 	write_conf(HAVE_DVBAPI, "DVB API support");
 	if(config_enabled(HAVE_DVBAPI))
 	{
+		write_conf(WITH_EXTENDED_CW, "DVB API with extended CW API support");
+		if(config_enabled(MODULE_STREAMRELAY))
+		{
+			write_conf(true, "DVB API with Stream Relay support");
+		}
 		write_conf(WITH_AZBOX, "DVB API with AZBOX support");
 		write_conf(WITH_MCA, "DVB API with MCA support");
 		write_conf(WITH_COOLAPI, "DVB API with COOLAPI support");
 		write_conf(WITH_COOLAPI2, "DVB API with COOLAPI2 support");
 		write_conf(WITH_STAPI, "DVB API with STAPI support");
 		write_conf(WITH_STAPI5, "DVB API with STAPI5 support");
+		write_conf(WITH_NEUTRINO, "DVB API with NEUTRINO support");
 		write_conf(READ_SDT_CHARSETS, "DVB API read-sdt charsets");
 	}
-	write_conf(IRDETO_GUESSING, "Irdeto guessing");
 	write_conf(CS_ANTICASC, "Anti-cascading support");
 	write_conf(WITH_DEBUG, "Debug mode");
 	write_conf(MODULE_MONITOR, "Monitor");
 	write_conf(WITH_LB, "Loadbalancing support");
 	write_conf(CS_CACHEEX, "Cache exchange support");
+#ifdef CS_CACHEEX_AIO
+	write_conf(CS_CACHEEX_AIO, "Cache exchange AIO support");
+#endif
 	write_conf(CW_CYCLE_CHECK, "CW Cycle Check support");
 	write_conf(LCDSUPPORT, "LCD support");
 	write_conf(LEDSUPPORT, "LED support");
-	switch (cs_getclocktype()) {
+	switch (cs_getclocktype())
+	{
 		case CLOCK_TYPE_UNKNOWN  : write_conf(CLOCKFIX, "Clockfix with UNKNOWN clock"); break;
 		case CLOCK_TYPE_REALTIME : write_conf(CLOCKFIX, "Clockfix with realtime clock"); break;
 		case CLOCK_TYPE_MONOTONIC: write_conf(CLOCKFIX, "Clockfix with monotonic clock"); break;
 	}
 	write_conf(IPV6SUPPORT, "IPv6 support");
+#if defined(__arm__) || defined(__aarch64__)
+	write_conf(WITH_ARM_NEON, "ARM NEON (SIMD/MPE) support");
+#endif
+#ifdef WITH_SIGNING
+	write_conf(WITH_SIGNING, "Binary signing support");
+#endif
 
 	fprintf(fp, "\n");
 	write_conf(MODULE_CAMD33, "camd 3.3x");
@@ -439,6 +475,7 @@ static void write_versionfile(bool use_stdout)
 	write_conf(MODULE_CONSTCW, "constant CW");
 	write_conf(MODULE_PANDORA, "Pandora");
 	write_conf(MODULE_GHTTP, "ghttp");
+	write_conf(MODULE_STREAMRELAY, "Streamrelay");
 
 	fprintf(fp, "\n");
 	write_conf(WITH_CARDREADER, "Reader support");
@@ -446,6 +483,7 @@ static void write_versionfile(bool use_stdout)
 	{
 		fprintf(fp, "\n");
 		write_readerconf(READER_NAGRA, "Nagra");
+		write_readerconf(READER_NAGRA_MERLIN, "Nagra Merlin");
 		write_readerconf(READER_IRDETO, "Irdeto");
 		write_readerconf(READER_CONAX, "Conax");
 		write_readerconf(READER_CRYPTOWORKS, "Cryptoworks");
@@ -492,10 +530,10 @@ static void remove_versionfile(void)
 }
 
 #define report_emm_support(CONFIG_VAR, text) \
-    do { \
-        if (!config_enabled(CONFIG_VAR)) \
-            cs_log_dbg(D_TRACE, "Binary without %s module - no EMM processing for %s possible!", text, text); \
-    } while(0)
+	do { \
+		if (!config_enabled(CONFIG_VAR)) \
+			cs_log_dbg(D_TRACE, "Binary without %s module - no EMM processing for %s possible!", text, text); \
+	} while(0)
 
 static void do_report_emm_support(void)
 {
@@ -506,6 +544,7 @@ static void do_report_emm_support(void)
 	else
 	{
 		report_emm_support(READER_NAGRA, "Nagra");
+		report_emm_support(READER_NAGRA_MERLIN, "Nagra Merlin");
 		report_emm_support(READER_IRDETO, "Irdeto");
 		report_emm_support(READER_CONAX, "Conax");
 		report_emm_support(READER_CRYPTOWORKS, "Cryptoworks");
@@ -631,7 +670,7 @@ static void cs_dumpstack(int32_t sig)
 
 	fprintf(stderr, "crashed with signal %d on %swriting oscam.crash\n", sig, buf);
 
-	fprintf(fp, "%sOSCam cardserver v%s, build r%s (%s)\n", buf, CS_VERSION, CS_SVN_VERSION, CS_TARGET);
+	fprintf(fp, "%sOSCam cardserver v%s@%s (%s)\n", buf, CS_VERSION, CS_GIT_COMMIT, CS_TARGET);
 	fprintf(fp, "FATAL: Signal %d: %s Fault. Logged StackTrace:\n\n", sig, (sig == SIGSEGV) ? "Segmentation" : ((sig == SIGBUS) ? "Bus" : "Unknown"));
 	fclose(fp);
 
@@ -737,9 +776,9 @@ static void init_signal(void)
 	set_signal_handler(SIGTERM, 3, cs_exit);
 
 	set_signal_handler(SIGWINCH, 1, SIG_IGN);
-	set_signal_handler(SIGPIPE , 0, cs_sigpipe);
-	set_signal_handler(SIGALRM , 0, cs_master_alarm);
-	set_signal_handler(SIGHUP  , 1, cs_reload_config);
+	set_signal_handler(SIGPIPE, 0, cs_sigpipe);
+	set_signal_handler(SIGALRM, 0, cs_master_alarm);
+	set_signal_handler(SIGHUP, 1, cs_reload_config);
 	set_signal_handler(SIGUSR1, 1, cs_debug_level);
 	set_signal_handler(SIGUSR2, 1, cs_card_info);
 	set_signal_handler(OSCAM_SIGNAL_WAKEUP, 0, cs_dummy);
@@ -778,9 +817,9 @@ void cs_exit(int32_t sig)
 
 		free_client(cl);
 
-		//Restore signals before exiting thread
-		set_signal_handler(SIGPIPE , 0, cs_sigpipe);
-		set_signal_handler(SIGHUP  , 1, cs_reload_config);
+		// Restore signals before exiting thread
+		set_signal_handler(SIGPIPE, 0, cs_sigpipe);
+		set_signal_handler(SIGHUP, 1, cs_reload_config);
 
 		pthread_exit(NULL);
 		return;
@@ -798,9 +837,9 @@ static char *read_line_from_file(char *fname, char *buf, int bufsz)
 		return NULL;
 	while (fgets(buf, bufsz, f))
 	{
-		if (strstr(buf,"\n")) //we need only the first line
+		if (strstr(buf,"\n")) // we need only the first line
 		{
-			buf[strlen(buf)-1] = '\0';
+			buf[cs_strlen(buf)-1] = '\0';
 			break;
 		}
 	}
@@ -831,9 +870,9 @@ static void init_machine_info(void)
 	// Linux only functionality
 	char boxtype[128];
 	boxtype[0] = 0;
-	char model[128];
+	char model[64];
 	model[0] = 0;
-	char vumodel[128];
+	char vumodel[64];
 	vumodel[0] = 0;
 	int8_t azmodel = 0;
 	FILE *f;
@@ -843,7 +882,9 @@ static void init_machine_info(void)
 	read_line_from_file("/proc/stb/info/boxtype", boxtype, sizeof(boxtype));
 	read_line_from_file("/proc/stb/info/vumodel", vumodel, sizeof(vumodel));
 	if (vumodel[0] && !boxtype[0] && !azmodel)
+	{
 		snprintf(boxtype, sizeof(boxtype), "vu%s", vumodel);
+	}
 	if (!boxtype[0] && azmodel)
 		snprintf(boxtype, sizeof(boxtype), "Azbox-%s", model);
 
@@ -883,8 +924,8 @@ static void init_machine_info(void)
 
 	if (!boxtype[0])
 	{
-		uchar *pos;
-		pos = (uchar*) memchr(buffer.release, 'd', sizeof(buffer.release));
+		uint8_t *pos;
+		pos = (uint8_t *)memchr(buffer.release, 'd', sizeof(buffer.release));
 		if(pos)
 		{
 			if((!memcmp(pos, "dbox2", sizeof("dbox2"))) && !strcasecmp(buffer.machine, "ppc"))
@@ -942,7 +983,7 @@ bool boxname_is(const char *boxname)
 static void init_check(void)
 {
 	char *ptr = __DATE__;
-	int32_t month, year = atoi(ptr + strlen(ptr) - 4), day = atoi(ptr + 4);
+	int32_t month, year = atoi(ptr + cs_strlen(ptr) - 4), day = atoi(ptr + 4);
 	if(day > 0 && day < 32 && year > 2010 && year < 9999)
 	{
 		struct tm timeinfo;
@@ -1004,7 +1045,7 @@ static void fix_stacksize(void)
 #ifndef PTHREAD_STACK_MIN
 #define PTHREAD_STACK_MIN 64000
 #endif
-#define OSCAM_STACK_MIN PTHREAD_STACK_MIN+32768
+#define OSCAM_STACK_MIN PTHREAD_STACK_MIN + 32768
 
 	if(oscam_stacksize < OSCAM_STACK_MIN)
 	{
@@ -1015,7 +1056,7 @@ static void fix_stacksize(void)
 			return;
 		}
 
-		oscam_stacksize = (((OSCAM_STACK_MIN) / pagesize) + 1) * pagesize;
+		oscam_stacksize = ((OSCAM_STACK_MIN) / pagesize + 1) * pagesize;
 	}
 }
 
@@ -1030,7 +1071,7 @@ int32_t start_thread(char *nameroutine, void *startroutine, void *arg, pthread_t
 	SAFE_ATTR_INIT(&attr);
 
 	if(modify_stacksize)
- 		{ SAFE_ATTR_SETSTACKSIZE(&attr, oscam_stacksize); }
+		{ SAFE_ATTR_SETSTACKSIZE(&attr, oscam_stacksize); }
 
 	int32_t ret = pthread_create(pthread == NULL ? &temp : pthread, &attr, startroutine, arg);
 	if(ret)
@@ -1182,10 +1223,10 @@ static void process_clients(void)
 	struct s_reader *rdr;
 	struct pollfd *pfd;
 	struct s_client **cl_list;
-	struct timeb start, end;  // start time poll, end time poll
+	struct timeb start, end; // start time poll, end time poll
 	uint32_t cl_size = 0;
 
-	uchar buf[10];
+	uint8_t buf[10];
 
 	if(pipe(thread_pipe) == -1)
 	{
@@ -1203,7 +1244,7 @@ static void process_clients(void)
 	{
 		pfdcount = 1;
 
-		//connected tcp clients
+		// connected tcp clients
 		for(cl = first_client->next; cl; cl = cl->next)
 		{
 			if(cl->init_done && !cl->kill && cl->pfd && cl->typ == 'c' && !cl->is_udp)
@@ -1301,7 +1342,6 @@ static void process_clients(void)
 				}
 			}
 
-
 			//reader
 			// either an ecm answer, a keepalive or connection closed from a proxy
 			// physical reader ('r') should never send data without request
@@ -1328,7 +1368,6 @@ static void process_clients(void)
 					add_job(cl2, ACTION_READER_REMOTE, NULL, 0);
 				}
 			}
-
 
 			//server sockets
 			// new connection on a tcp listen socket or new message on udp listen socket
@@ -1427,7 +1466,6 @@ static void * card_poll(void) {
 #ifdef WEBIF
 static pid_t pid;
 
-
 static void fwd_sig(int32_t sig)
 {
 	kill(pid, sig);
@@ -1437,15 +1475,14 @@ static void restart_daemon(void)
 {
 	while(1)
 	{
-
-		//start client process:
+		// start client process:
 		pid = fork();
 		if(!pid)
-			{ return; } //client process=oscam process
+			{ return; } // client process=oscam process
 		if(pid < 0)
 			{ exit(1); }
 
-		//set signal handler for the restart daemon:
+		// set signal handler for the restart daemon:
 		set_signal_handler(SIGINT, 3, fwd_sig);
 #if defined(__APPLE__)
 		set_signal_handler(SIGEMT, 3, fwd_sig);
@@ -1460,7 +1497,7 @@ static void restart_daemon(void)
 		set_signal_handler(SIGPIPE , 0, SIG_IGN);
 		set_signal_handler(OSCAM_SIGNAL_WAKEUP, 0, SIG_IGN);
 
-		//restart control process:
+		// restart control process:
 		int32_t res = 0;
 		int32_t status = 0;
 		do
@@ -1475,11 +1512,11 @@ static void restart_daemon(void)
 		while(res != pid);
 
 		if(cs_restart_mode == 2 && WIFSIGNALED(status) && WTERMSIG(status) == SIGSEGV)
-			{ status = 99; } //restart on segfault!
+			{ status = 99; } // restart on segfault!
 		else
 			{ status = WEXITSTATUS(status); }
 
-		//status=99 restart oscam, all other->terminate
+		// status=99 restart oscam, all other->terminate
 		if(status != 99)
 		{
 			exit(status);
@@ -1553,6 +1590,9 @@ const struct s_cardsystem *cardsystems[] =
 {
 #ifdef READER_NAGRA
 	&reader_nagra,
+#endif
+#ifdef READER_NAGRA_MERLIN
+	&reader_nagracak7,
 #endif
 #ifdef READER_IRDETO
 	&reader_irdeto,
@@ -1636,13 +1676,15 @@ const struct s_cardreader *cardreaders[] =
 #ifdef CARDREADER_STINGER
 	&cardreader_stinger,
 #endif
+
 	NULL
 };
 
 static void find_conf_dir(void)
- {
+{
 	static const char* confdirs[] =
-		{	"/etc/tuxbox/config/",
+		{
+			"/etc/tuxbox/config/",
 			"/etc/tuxbox/config/oscam/",
 			"/var/tuxbox/config/",
 			"/usr/keys/",
@@ -1655,10 +1697,10 @@ static void find_conf_dir(void)
 		};
 
 	char conf_file[128+16];
- 	int32_t i;
+	int32_t i;
 
-	if(cs_confdir[strlen(cs_confdir) - 1] != '/')
-		{ strcat(cs_confdir, "/"); }
+	if(cs_confdir[cs_strlen(cs_confdir) - 1] != '/')
+		{ cs_strncat(cs_confdir, "/", sizeof(cs_confdir)); }
 
 	if(snprintf(conf_file, sizeof(conf_file), "%soscam.conf", cs_confdir) < 0)
 		{ return; }
@@ -1742,8 +1784,13 @@ int32_t main(int32_t argc, char *argv[])
 #ifdef HAVE_DVBAPI
 		module_dvbapi,
 #endif
+#ifdef MODULE_STREAMRELAY
+		module_streamrelay,
+#endif
 		0
 	};
+
+	set_default_dirs_first();
 
 	find_conf_dir();
 
@@ -1765,7 +1812,7 @@ int32_t main(int32_t argc, char *argv[])
 	memset(&cfg, 0, sizeof(struct s_config));
 	cfg.max_pending = max_pending;
 
-	if(cs_confdir[strlen(cs_confdir) - 1] != '/') { strcat(cs_confdir, "/"); }
+	if(cs_confdir[cs_strlen(cs_confdir) - 1] != '/') { cs_strncat(cs_confdir, "/", sizeof(cs_confdir)); }
 	init_signal_pre(); // because log could cause SIGPIPE errors, init a signal handler first
 	init_first_client();
 	cs_lock_create(__func__, &system_lock, "system_lock", 5000);
@@ -1776,11 +1823,14 @@ int32_t main(int32_t argc, char *argv[])
 	cs_lock_create(__func__, &fakeuser_lock, "fakeuser_lock", 5000);
 	cs_lock_create(__func__, &ecmcache_lock, "ecmcache_lock", 5000);
 	cs_lock_create(__func__, &ecm_pushed_deleted_lock, "ecm_pushed_deleted_lock", 5000);
-	cs_lock_create(__func__, &readdir_lock, "readdir_lock", 5000);
 	cs_lock_create(__func__, &cwcycle_lock, "cwcycle_lock", 5000);
 	init_cache();
 	cacheex_init_hitcache();
 	init_config();
+#ifdef CS_CACHEEX_AIO
+	init_cw_cache();
+	init_ecm_cache();
+#endif
 	cs_init_log();
 	init_machine_info();
 	init_check();
@@ -1818,9 +1868,6 @@ int32_t main(int32_t argc, char *argv[])
 
 	cacheex_init();
 
-	init_len4caid();
-	init_irdeto_guess_tab();
-
 	write_versionfile(false);
 
 	led_init();
@@ -1849,7 +1896,7 @@ int32_t main(int32_t argc, char *argv[])
 		}
 	}
 
-	//set time for server to now to avoid 0 in monitor/webif
+	// set time for server to now to avoid 0 in monitor/webif
 	first_client->last = time((time_t *)0);
 
 	webif_init();
@@ -1873,6 +1920,8 @@ int32_t main(int32_t argc, char *argv[])
 
 	ac_init();
 
+	gbox_send_init_hello();
+
 	start_thread("card poll", (void *) &card_poll, NULL, NULL, 1, 1);
 
 	for(i = 0; i < CS_MAX_MOD; i++)
@@ -1891,8 +1940,10 @@ int32_t main(int32_t argc, char *argv[])
 
 	// Cleanup
 #ifdef MODULE_GBOX
- if(!cfg.gsms_dis)
-	{ stop_sms_sender(); }
+	stop_gbx_ticker();
+#endif
+#ifdef MODULE_STREAMRELAY
+	stop_stream_server();
 #endif
 	webif_close();
 	azbox_close();
@@ -1941,13 +1992,15 @@ int32_t main(int32_t argc, char *argv[])
 	cs_sleepms(200);
 
 	free_cache();
+#ifdef CS_CACHEEX_AIO
+	free_ecm_cache();
+#endif
 	cacheex_free_hitcache();
 	webif_tpls_free();
 	init_free_userdb(cfg.account);
 	cfg.account = NULL;
 	init_free_sidtab();
 	free_readerdb();
-	free_irdeto_guess_tab();
 	config_free();
 	ssl_done();
 

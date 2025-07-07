@@ -37,9 +37,9 @@ DESCRIPTIONS
 
        allowedtimeframe = DAY@HH:MM-HH:MM[,HH:MM-HH:MM][,HH:MM-HH:MM][;DAY@HH:MM-HH:MM[,HH:MM-HH:MM][,HH:MM-HH:MM]]
                     where DAY=SUN,MON,TUE,WED,THU,FRI,SAT or ALL (for all possible days)
-                    
+
 	  account enabled from hh:mm to hh:mm for the specified day(s), default:none
-	  
+
       comma (,) to separate times and semicolon(; ) to separate the different days.
       You can use ALL@ if you want the same time frames for everyday.
 
@@ -83,19 +83,23 @@ DESCRIPTIONS
 	    0 = disable fake delay
 	   -1 = fake delay of oscam.conf (default)
 
+	    acosc_max_ecms_per_minute = count
+	  maximum ecms per minute, 0 = unlimited, default:0
+
        acosc_max_active_sids = count
 	  maximum active SIDs with anti-cascading over SID, 0 = unlimited, -1 = use global setting, default:0
 
        acosc_zap_limit = count
 	  zap limit for anti-cascading over SID, 0 = unlimited, -1 = use global setting, default:0
 
-       acosc_penalty = 0|1|2|3|-1
+       acosc_penalty = 0|1|2|3|4|-1
 	  level of penalty with anti-cascading over SID count:
 
 	    0 = only logging (default)
 	    1 = send fake CWs
 	    2 = temporary user ban
 	    3 = send delayed CWs
+	    4 = temporary hidecards to the client
 	   -1 = use global setting
 
        acosc_penalty_duration = seconds
@@ -296,8 +300,8 @@ EXAMPLES
 	uniq	   = 1
 
 SEE ALSO
-       list_smargo(1), oscam(1), oscam.ac(5), oscam.cacheex(5), oscam.cert(5), oscam.conf(5), oscam.dvbapi(5),	oscam.fakecws(5),
-       oscam.guess(5),	oscam.ird(5),  oscam.provid(5),  oscam.ratelimit(5),  oscam.server(5), oscam.services(5), oscam.tiers(5),
+       list_smargo(1), oscam(1), oscam.ac(5), oscam.cacheex(5), oscam.cert(5), oscam.conf(5), oscam.dvbapi(5), oscam.fakecws(5),
+       oscam.guess(5), oscam.ird(5), oscam.provid(5), oscam.ratelimit(5), oscam.server(5), oscam.services(5), oscam.tiers(5),
        oscam.srvid(5), oscam.srvid2(5), oscam.whitelist(5)
 
 

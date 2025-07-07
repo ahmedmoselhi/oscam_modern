@@ -16,10 +16,20 @@
  * and each level
  */
 
+//remove spaces at the end of lines
+
 //one empty line between functions
 const char *idea_options(void){
 <------>if (sizeof(short) != sizeof(IDEA_INT)) // please do not use shortenings
 <------>{
+<------><-->return ("idea(int)");
+<------>} else {
+<------><-->return ("idea(short)");
+<------>}
+}
+
+//alternative usual notation
+<------>if (sizeof(short) != sizeof(IDEA_INT)) { // please do not use shortenings
 <------><-->return ("idea(int)");
 <------>} else {
 <------><-->return ("idea(short)");
@@ -36,13 +46,13 @@ int main(void)
 <------>printf("hello, world\n");
 <------>for (count=1; count < 11; count = count + 1)
 <------>{
-<------><-->printf(" %d\n", count); 
+<------><-->printf(" %d\n", count);
 <------>}
 
 <------>//one empty line between codeblocks
 <------>while(i < x)
 <------>{
-<------><-->printf(" %d\n", i);      
+<------><-->printf(" %d\n", i);
 <------><-->i++;
 <------>}
 <------>exit(0);

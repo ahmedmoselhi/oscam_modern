@@ -17,6 +17,7 @@
 #include "oscam-time.h"
 
 static int8_t running;
+int32_t seconds, secs, fullmins, mins, hours, days, fullhours;
 
 static void refresh_lcd_file(void)
 {
@@ -38,14 +39,19 @@ static void refresh_lcd_file(void)
 	}
 
 	int8_t iscccam = 0;
-	int32_t seconds = 0, secs = 0, fullmins = 0, mins = 0, fullhours = 0, hours = 0,    days = 0;
+	fullhours = 0;
+	fullmins = 0;
+	seconds = 0;
+	hours = 0;
+	mins = 0;
+	secs = 0;
+	days = 0;
 	time_t now;
-
 
 	while(running)
 	{
 		now = time((time_t *)0);
-		int16_t cnt = 0, idx = 0, count_r = 0, count_p = 0, count_u = 0;
+		int16_t idx = 0, count_r = 0, count_p = 0, count_u = 0;
 		FILE *fpsave;
 
 		if((fpsave = fopen(temp_file, "w")))
@@ -80,7 +86,6 @@ static void refresh_lcd_file(void)
 			}
 
 			fprintf(fpsave, "Version: %s\n", CS_VERSION);
-			fprintf(fpsave, "Revision: %s\n", CS_SVN_VERSION);
 			if(days == 0)
 				{ fprintf(fpsave, "up: %02d:%02d:%02d\n", hours, mins, secs); }
 			else
@@ -150,7 +155,7 @@ static void refresh_lcd_file(void)
 						}
 					}
 
-					int16_t written = 0, skipped = 0, blocked = 0, error = 0;
+					uint16_t written = 0, skipped = 0, blocked = 0, error = 0;
 
 					char emmtext[16] = "               ";
 					if(cl->typ == 'r' || !iscccam)
@@ -215,12 +220,12 @@ static void refresh_lcd_file(void)
 				seconds = now - cl->lastecm;
 
 				if(cl->typ == 'c' && seconds < 15)
-				{		
+				{
 					type = "U";
 					idx = count_u;
 					label = cl->account->usr;
 					count_u++;
-							
+
 					get_servicename(cl, cl->last_srvid, cl->last_provid, cl->last_caid, channame, sizeof(channame));
 					fprintf(fpsave, "%s%d | %-10.10s | %-10.10s:%-17.17s| % 4d\n",
 							type,
@@ -238,7 +243,6 @@ static void refresh_lcd_file(void)
 		}
 
 		cs_sleepms(cfg.lcd_write_intervall * 1000);
-		cnt++;
 
 		if(rename(temp_file, targetfile) < 0)
 			{ cs_log("An error occured while writing oscam.lcd file %s.", targetfile); }

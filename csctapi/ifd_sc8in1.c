@@ -328,7 +328,7 @@ static int32_t sc8in1_command(struct s_reader *reader, unsigned char *buff,
 
 static int32_t mcrReadStatus(struct s_reader *reader, unsigned char *status)
 {
-	unsigned char buff[2];
+	unsigned char buff[2] = "";
 	buff[0] = 0x3f;
 	if(sc8in1_command(reader, buff, 1, 2, 0, 1, 0) < 0)
 		{ return ERROR; }
@@ -1039,7 +1039,7 @@ static int32_t Sc8in1_Close(struct s_reader *reader)
 static int32_t Sc8in1_SetSlotForReader(struct s_reader *reader)
 {
 	// Sets the slot for the reader if it is not set already
-	int32_t pos = strlen(reader->device) - 2; //this is where : should be located; is also valid length of physical device name
+	int32_t pos = cs_strlen(reader->device) - 2; //this is where : should be located; is also valid length of physical device name
 	if(reader->device[pos] != 0x3a)  //0x3a = ":"
 		{ rdr_log(reader, "ERROR: '%c' detected instead of slot separator `:` at second to last position of device %s", reader->device[pos], reader->device); }
 	reader->slot = (uint16_t)reader->device[pos + 1] - 0x30;
@@ -1057,7 +1057,7 @@ static int32_t Sc8in1_InitLocks(struct s_reader *reader)
 	Sc8in1_SetSlotForReader(reader);
 
 	// Get device name
-	int32_t pos = strlen(reader->device) - 2;
+	int32_t pos = cs_strlen(reader->device) - 2;
 	if(pos <= 0)
 	{
 		return ERROR;
@@ -1148,7 +1148,7 @@ static void sc8in1_display(struct s_reader *reader, char *message)
 	if(!crdr_data->mcr_type)
 		{ return; }
 	char msg[4] = "   ";
-	if(strlen(message) >= 3)
+	if(cs_strlen(message) >= 3)
 	{
 		msg[0] = message[0];
 		msg[1] = message[1];
@@ -1169,7 +1169,7 @@ static int32_t sc8in1_init(struct s_reader *reader)
 		return OK;
 	}
 	//get physical device name
-	int32_t pos = strlen(reader->device) - 2; //this is where : should be located; is also valid length of physical device name
+	int32_t pos = cs_strlen(reader->device) - 2; //this is where : should be located; is also valid length of physical device name
 	if(pos <= 0 || reader->device[pos] != 0x3a)  //0x3a = ":"
 		{ rdr_log(reader, "ERROR: '%c' detected instead of slot separator `:` at second to last position of device %s", reader->device[pos], reader->device); }
 	// Check if serial port is open already
@@ -1179,9 +1179,9 @@ static int32_t sc8in1_init(struct s_reader *reader)
 		rdr_log_dbg(reader, D_DEVICE, "%s opening SC8in1", __func__);
 		//open physical device
 		char deviceName[128];
-		strncpy(deviceName, reader->device, 128);
+		cs_strncpy(deviceName, reader->device, 128);
 		deviceName[pos] = 0;
-		reader->handle = open(deviceName,  O_RDWR | O_NOCTTY | O_NONBLOCK);
+		reader->handle = open(deviceName, O_RDWR | O_NOCTTY | O_NONBLOCK);
 		if(reader->handle < 0)
 		{
 			rdr_log(reader, "ERROR: Opening device %s with real device %s (errno=%d %s)", reader->device, deviceName, errno, strerror(errno));

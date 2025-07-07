@@ -149,7 +149,7 @@ static void *arm_led_thread_main(void *UNUSED(thread_data))
 			time_t now, start;
 			led = arm_led->led;
 			action = arm_led->action;
-			now = time((time_t)0);
+			now = time(0);
 			start = arm_led->start_time;
 			ll_iter_remove_data(&iter);
 			if(action == LED_STOP_THREAD)
@@ -197,7 +197,7 @@ static void arm_led(int32_t led, int32_t action)
 	}
 	if(cs_malloc(&data, sizeof(struct s_arm_led)))
 	{
-		data->start_time = time((time_t)0);
+		data->start_time = time(0);
 		data->led = led;
 		data->action = action;
 		ll_append(arm_led_actions, (void *)data);
@@ -255,9 +255,9 @@ static void qboxhd_led_blink(int32_t color, int32_t duration)
 				break;
 			}
 			// set LED on with color
-			qbminiled.red = (uchar)((qboxhdmini_color & 0xFF0000) >> 16); // R
-			qbminiled.green = (uchar)((qboxhdmini_color & 0x00FF00) >> 8); // G
-			qbminiled.blue = (uchar)(qboxhdmini_color & 0x0000FF);     // B
+			qbminiled.red = (uint8_t)((qboxhdmini_color & 0xFF0000) >> 16);  // R
+			qbminiled.green = (uint8_t)((qboxhdmini_color & 0x00FF00) >> 8); // G
+			qbminiled.blue = (uint8_t)(qboxhdmini_color & 0x0000FF);         // B
 			ioctl(f, QBOXHDMINI_IOSET_RGB, &qbminiled);
 			cs_sleepms(duration);
 		}
