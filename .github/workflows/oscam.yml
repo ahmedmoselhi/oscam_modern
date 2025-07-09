@@ -1,6 +1,7 @@
 name: oscam build
 
 on:
+  workflow_dispatch:
   push:
     branches: [ master ]
   pull_request:
@@ -31,7 +32,7 @@ jobs:
         run: |
           echo "compiling oscam"
           mkdir build;cd build
-          ../config.sh --restore
+          ../config.sh --restore --disable WITH_SOFTCAM
           cmake ..
           make
           echo done!
