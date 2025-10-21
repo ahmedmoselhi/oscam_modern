@@ -1889,7 +1889,10 @@ static char *send_oscam_reader(struct templatevars *vars, struct uriparams *para
 	if(strcmp(getParam(params, "action"), "reloadreaders") == 0)
 	{
 		if(!cfg.http_readonly)
-			{ refresh_oscam(REFR_READERS); }
+		{
+			refresh_oscam(REFR_READERS);
+			refresh_oscam(REFR_ACCOUNTS);
+		}
 	}
 	if((strcmp(getParam(params, "action"), "disable") == 0) || (strcmp(getParam(params, "action"), "enable") == 0))
 	{
@@ -2711,17 +2714,6 @@ static char *send_oscam_reader_config(struct templatevars *vars, struct uriparam
 		tpl_addVar(vars, TPLADD, "FORCEIRDETOVALUE", (rdr->force_irdeto == 1) ? "1" : "0");
 	}
 
-	// needsemmfirst
-
-	if(!apicall)
-	{
-		tpl_addVar(vars, TPLADD, "NEEDSEMMFIRST", (rdr->needsemmfirst == 1) ? "checked" : "");
-	}
-	else
-	{
-		tpl_addVar(vars, TPLADD, "NEEDSEMMFIRST", (rdr->needsemmfirst == 1) ? "1" : "0");
-	}
-
 #ifdef READER_CRYPTOWORKS
 	// needsglobalfirst
 	if(!apicall)
@@ -2860,6 +2852,16 @@ static char *send_oscam_reader_config(struct templatevars *vars, struct uriparam
 	// cak7_mode
 	if(rdr->cak7_mode)
 		{ tpl_addVar(vars, TPLADD, "NAGRACAK7MODECHECKED", "checked"); }
+
+	tpl_printf(vars, TPLADD, "TMP", "CARDSTARTDATEBASEMONTH%d", rdr->card_startdate_basemonth);
+	tpl_addVar(vars, TPLADD, tpl_getVar(vars, "TMP"), "selected");
+
+	tpl_printf(vars, TPLADD, "CARDSTARTDATEBASEYEAR", "%d", rdr->card_startdate_baseyear);
+
+	tpl_printf(vars, TPLADD, "TMP", "CARDEXPIREDATEBASEMONTH%d", rdr->card_expiredate_basemonth);
+	tpl_addVar(vars, TPLADD, tpl_getVar(vars, "TMP"), "selected");
+
+	tpl_printf(vars, TPLADD, "CARDEXPIREDATEBASEYEAR", "%d", rdr->card_expiredate_baseyear);
 
 	// ins7E
 	if(rdr->ins7E[0x1A])
