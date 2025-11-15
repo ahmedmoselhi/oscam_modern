@@ -180,6 +180,15 @@ endif
 # The compiler knows for what target it compiles, so use this information
 TARGET := $(shell $(CC) -dumpmachine 2>/dev/null)
 
+# --- Start MODIFICATION: Remove -lpthread for armv7a-unknown-linux-android26
+ifeq ($(TARGET),armv7a-unknown-linux-android26)
+    # The Android NDK toolchain for this target often provides pthread functions 
+    # within libc/libdl, making -lpthread redundant or causing link errors.
+    LIB_PTHREAD := 
+    override STD_LIBS := -lm $(LIB_PTHREAD) $(LIB_DL) $(LIB_RT)
+endif
+# --- End MODIFICATION
+
 # Process USE_ variables
 DEFAULT_STAPI_LIB = -L./stapi -loscam_stapi
 DEFAULT_STAPI5_LIB = -L./stapi -loscam_stapi5
