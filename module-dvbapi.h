@@ -145,7 +145,7 @@
 #define DEMUX_CA_MASK_ADAPTER			0x82 // deprecated - applications should use descriptors ADAPTER_DEVICE, DEMUX_DEVICE and CA_DEVICE instead
 #define ADAPTER_DEVICE					0x83
 #define PMT_PID							0x84
-#define SERVICE_TYPE_MASK				0x85
+#define SERVICE_TYPE_MASK				0x85 // not used by OSCam
 #define DEMUX_DEVICE					0x86
 #define CA_DEVICE						0x87
 
@@ -336,6 +336,9 @@ typedef struct filter_s
 	uint32_t         SlotHandle[10];
 	uint32_t         BufferHandle[10];
 #endif
+#ifdef WITH_EMU
+	uint32_t cadata;
+#endif
 } FILTERTYPE;
 
 #ifdef WITH_EXTENDED_CW
@@ -368,6 +371,9 @@ typedef struct s_ecmpid
 	uint32_t         index[MAX_STREAM_INDICES];          // ca indices used for this ecm pid (index[0] holds ca index for STREAMmpids[0] and so on)
 	uint32_t         streams;                            // bit mask of STREAMpids enabled for this ECMpid
 	uint32_t         cadata;
+#ifdef WITH_EMU
+	int16_t pvu_counter;
+#endif
 } ECMPIDTYPE;
 
 typedef struct s_emmpid
@@ -446,7 +452,6 @@ typedef struct demux_s
 	struct timeb     decstart;
 	struct timeb     decend;
 	uint32_t         msgid;
-	int64_t          srvtype;                           // service type mask from CA PMT descriptor 0x85, or -1 if not present
 } DEMUXTYPE;
 
 typedef struct s_streampid
