@@ -108,3 +108,19 @@ forum under (mainly German and English language) at:
 
 Configuration wiki:
    https://wiki.streamboard.tv/wiki/OSCam/de/Config/oscam.conf
+
+WebIf script integration example
+================================
+
+This repository now includes an example helper script at:
+
+`Distribution/scripts/cccam_import_to_oscam.sh`
+
+It can be used from OSCam WebIf Script page (`/script.html`) by setting
+`httpscript` in `oscam.conf` to the directory where this script is deployed,
+then running it from the dropdown.
+
+The script fetches CCcam/Newcamd lines from several public pages, converts
+those lines to OSCam `[reader]` entries, and writes the resulting server list
+to common `oscam.server` target paths used by embedded images.
+
