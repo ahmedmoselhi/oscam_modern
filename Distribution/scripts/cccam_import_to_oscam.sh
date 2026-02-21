@@ -4,13 +4,12 @@
 # and write/update oscam.server in common STB paths.
 #
 # Usage:
-#   sh cccam_import_to_oscam.sh [output_server_file]
+#   sh cccam_import_to_oscam.sh
 #
 # Notes:
 # - This script is designed to be callable from OSCam WebIf "Script" page when
 #   `httpscript` points to its directory.
-# - Default output path is /tmp/server; the script then copies content to
-#   several known oscam.server locations.
+# - Default output path is /etc/tuxbox/config/oscam-emu/oscam.server.
 
 set -u
 
@@ -18,7 +17,7 @@ WORKDIR="/tmp/xtest"
 CCCAM_CFG="/tmp/CCcam.cfg"
 CCCAM_CFG_FILTERED="/tmp/CCcam.cfg2"
 SOURCE_PAGE="$WORKDIR/CCcam"
-TARGET_SERVER="${1:-/tmp/server}"
+TARGET_SERVER="/etc/tuxbox/config/oscam-emu/oscam.server"
 OUTPUT_SERVER="/tmp/server.generated"
 OUTPUT_NEWCAMD="/tmp/server_n"
 AUTOGEN_BEGIN="# ---- OSCAM AUTO-GENERATED READERS (cccam_import_to_oscam.sh) BEGIN ----"
@@ -125,7 +124,7 @@ merge_target_server() {
 	tmp_target="/tmp/oscam_merge_$$.tmp"
 
 	# Skip paths whose parent directory does not exist.
-	[ -d "$target_dir" ] || return 0
+	[ -d "$target_dir" ] || return 1
 
 
 	# Keep user-maintained lines, drop previous auto-generated block if present.
@@ -215,18 +214,11 @@ EON
 	cat "$OUTPUT_NEWCAMD" >> "$OUTPUT_SERVER"
 	[ -f /etc/OscamDATAx.cfg ] && cat /etc/OscamDATAx.cfg >> "$OUTPUT_SERVER"
 
-	# If user passed an explicit target path, only update that path.
-	if [ "$TARGET_SERVER" != "/tmp/server" ]; then
-		merge_target_server "$TARGET_SERVER"
-		echo "Updated target: $TARGET_SERVER"
-		return 0
-	fi
-
-	# Otherwise update first existing/available server path only (do not overwrite all variants).
+	updated_count=0
 	for path in \
+		"$TARGET_SERVER" \
 		/etc/tuxbox/config/oscam.server \
 		/etc/tuxbox/config/oscam/oscam.server \
-		/etc/tuxbox/config/oscam-emu/oscam.server \
 		/etc/tuxbox/config/oscam_atv_free/oscam.server \
 		/etc/tuxbox/config/oscam-stable/oscam.server \
 		/var/tuxbox/config/oscam.server \
@@ -237,14 +229,15 @@ EON
 		/etc/tuxbox/config/oscamicam/oscam.server \
 		/etc/tuxbox/config/oscamicamnew/oscam.server
 	do
-		if [ -f "$path" ] || [ -d "$(dirname "$path")" ]; then
-			merge_target_server "$path"
+		if merge_target_server "$path"; then
 			echo "Updated target: $path"
-			return 0
+			updated_count=$((updated_count + 1))
 		fi
 	done
 
-	echo "No server target path found; generated readers kept at $OUTPUT_SERVER"
+	if [ "$updated_count" -eq 0 ]; then
+		echo "No target directories found (readers kept at $OUTPUT_SERVER)"
+	fi
 }
 
 main() {
@@ -271,5 +264,5 @@ main() {
 	cleanup
 }
 
-main "$@"
+main
 exit 0
