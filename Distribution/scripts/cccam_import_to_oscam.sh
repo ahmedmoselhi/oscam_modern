@@ -127,6 +127,7 @@ merge_target_server() {
 	# Skip paths whose parent directory does not exist.
 	[ -d "$target_dir" ] || return 0
 
+
 	# Keep user-maintained lines, drop previous auto-generated block if present.
 	if [ -f "$target" ]; then
 		sed "/^${AUTOGEN_BEGIN}","/^${AUTOGEN_END}/d" "$target" > "$tmp_target" 2>/dev/null || cp "$target" "$tmp_target"
