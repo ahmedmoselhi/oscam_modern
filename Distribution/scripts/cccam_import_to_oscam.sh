@@ -127,9 +127,9 @@ merge_target_server() {
 	[ -d "$target_dir" ] || return 1
 
 
-	# Keep user-maintained lines, drop previous auto-generated block if present.
+	# Keep user-maintained lines, drop all previous auto-generated blocks if present.
 	if [ -f "$target" ]; then
-		sed "/^${AUTOGEN_BEGIN}","/^${AUTOGEN_END}/d" "$target" > "$tmp_target" 2>/dev/null || cp "$target" "$tmp_target"
+		sed "/^${AUTOGEN_BEGIN}$/,/^${AUTOGEN_END}$/d" "$target" > "$tmp_target" 2>/dev/null || cp "$target" "$tmp_target"
 	else
 		: > "$tmp_target"
 	fi
