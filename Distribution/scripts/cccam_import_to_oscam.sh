@@ -121,7 +121,12 @@ build_cccam_cfg() {
 
 merge_target_server() {
 	target="$1"
-	tmp_target="${target}.tmp.$$"
+	target_dir="$(dirname "$target")"
+	tmp_target="/tmp/oscam_merge_$$.tmp"
+
+	# Skip paths whose parent directory does not exist.
+	[ -d "$target_dir" ] || return 0
+
 
 	# Keep user-maintained lines, drop previous auto-generated block if present.
 	if [ -f "$target" ]; then
@@ -210,23 +215,36 @@ EON
 	cat "$OUTPUT_NEWCAMD" >> "$OUTPUT_SERVER"
 	[ -f /etc/OscamDATAx.cfg ] && cat /etc/OscamDATAx.cfg >> "$OUTPUT_SERVER"
 
+	# If user passed an explicit target path, only update that path.
+	if [ "$TARGET_SERVER" != "/tmp/server" ]; then
+		merge_target_server "$TARGET_SERVER"
+		echo "Updated target: $TARGET_SERVER"
+		return 0
+	fi
+
+	# Otherwise update first existing/available server path only (do not overwrite all variants).
 	for path in \
-		"$TARGET_SERVER" \
+		/etc/tuxbox/config/oscam.server \
 		/etc/tuxbox/config/oscam/oscam.server \
 		/etc/tuxbox/config/oscam-emu/oscam.server \
 		/etc/tuxbox/config/oscam_atv_free/oscam.server \
-		/etc/tuxbox/config/oscam.server \
 		/etc/tuxbox/config/oscam-stable/oscam.server \
 		/var/tuxbox/config/oscam.server \
-		/etc/tuxbox/config/gcam.server \
 		/etc/tuxbox/config/ncam.server \
 		/etc/tuxbox/config/ncam/ncam.server \
+		/etc/tuxbox/config/gcam.server \
 		/etc/tuxbox/config/supcam-emu/oscam.server \
 		/etc/tuxbox/config/oscamicam/oscam.server \
 		/etc/tuxbox/config/oscamicamnew/oscam.server
 	do
-		merge_target_server "$path"
+		if [ -f "$path" ] || [ -d "$(dirname "$path")" ]; then
+			merge_target_server "$path"
+			echo "Updated target: $path"
+			return 0
+		fi
 	done
+
+	echo "No server target path found; generated readers kept at $OUTPUT_SERVER"
 }
 
 main() {
